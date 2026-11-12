@@ -43,23 +43,64 @@
 
 ## 三、部署（5 步）
 
+第 2、4 步在 Windows 与 Linux/macOS 上写法不同，下面分开列；其余步骤两种系统一样。
+
+### 1）取代码
+
 ```bash
-# 1. 取代码
-git clone <your-repo-url> piiscan
+git clone https://github.com/zeff2010/piiscan.git piiscan
 cd piiscan
+```
 
-# 2. 建虚拟环境（推荐，不污染系统 Python）
+没有 git 也可以直接下仓库的 zip 包解压，效果一样。
+
+### 2）建虚拟环境
+
+Windows（PowerShell 或 cmd）：
+
+```bat
 python -m venv .venv
-# Windows:  .venv\Scripts\activate
-# Linux/macOS: source .venv/bin/activate
+.venv\Scripts\activate
+```
 
-# 3. 装依赖
+Linux / macOS：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+激活成功的标志是命令行提示符前面多出 `(.venv)`。没出现就先别往下走 ——
+否则第 3 步会把包装进系统 Python，以后换版本很难收拾。
+
+### 3）装依赖
+
+```bash
 pip install -r requirements.txt
+```
 
-# 4. 生成本地配置（这个文件已被 .gitignore 排除，不会误提交）
-cp config.example.yaml config.yaml      # Windows: copy config.example.yaml config.yaml
+国内网络慢可以换镜像：
 
-# 5. 启动
+```bash
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+### 4）生成本地配置
+
+Linux / macOS：
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+Windows cmd 用 `copy config.example.yaml config.yaml`，
+PowerShell 用 `Copy-Item config.example.yaml config.yaml`。
+
+`config.yaml` 已经在 `.gitignore` 里，你填的手机号、API Key 不会误提交。
+
+### 5）启动
+
+```bash
 python run_platform.py
 ```
 
