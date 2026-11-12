@@ -220,9 +220,6 @@ def prof_summary() -> Dict[str, Any]:
             "tags": tags, "slow": list(PROF["slow"])}
 
 
-_ADB_CACHE: list = []          # 只缓存一次，避免每次 dump 都 stat 文件
-
-
 def _adb_bin() -> str:
     """找 adb 可执行文件。
 
@@ -231,26 +228,12 @@ def _adb_bin() -> str:
       `ADB` 环境变量，唯独**真正干活的这一层**不认。后果是 adb 不在 PATH 时，
       上层自检拿着 ADB 指向的真实路径报告"adb 正常"，而所有点击、dump、
       content query 全部静默失败 —— 现象是"界面一直没变化"，最难查的那类。
-    """
-    if _ADB_CACHE:
-        return _ADB_CACHE[0]
-    import os
-    import shutil
 
-    cand = [os.environ.get("ADB", ""), os.environ.get("ADB_PATH", "")]
-    for env_name in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
-        root = os.environ.get(env_name) or ""
-        if root:
-            cand.append(os.path.join(root, "platform-tools",
-                                     "adb.exe" if os.name == "nt" else "adb"))
-    cand.append(shutil.which("adb") or "")
-    found = "adb"
-    for p in cand:
-        if p and os.path.exists(p):
-            found = p
-            break
-    _ADB_CACHE.append(found)
-    return found
+      2026-11-12 起不再各处自己找：搜索顺序（环境变量 → SDK 目录 → PATH →
+      默认安装位置）只在 `adbtool` 里写一份。本函数保留只是为了不改调用点。
+    """
+    from .adbtool import adb_exe
+    return adb_exe()
 
 
 # ------------------------------------------------------------ 设备掉线自愈

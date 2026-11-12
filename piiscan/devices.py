@@ -111,9 +111,8 @@ def _blank_steps() -> List[Step]:
 # ============================================================================
 
 def _adb(serial: str = "") -> List[str]:
-    import os
-    exe = os.environ.get("ADB", "adb")
-    return [exe] + (["-s", serial] if serial else [])
+    from .adbtool import adb_exe
+    return [adb_exe()] + (["-s", serial] if serial else [])
 
 
 def _run(args: List[str], timeout: int = 30):

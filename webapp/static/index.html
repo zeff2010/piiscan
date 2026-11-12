@@ -1026,6 +1026,11 @@ syncDepthTip();
 //   ★ 也**不记 localStorage**：原来"记住上次选的那台"本身就是一种默认值，
 //     换个任务还沿用上一次的选择，等于让人在没看的情况下默认了设备。
 let DEVICES = [], DEV_SIG = "", DEV_TS = 0;
+// adb 自身的状态（服务端 adbtool 给的结论）。
+// ★ 为什么界面要拿这个（2026-11-12）：设备列表为空有多种原因 —— 没装 adb、
+//   手机没插、没点允许授权、adb 服务卡住。原来一律渲染成「未检测到测试机」，
+//   换一台机器部署时根本看不出是哪一种，只能猜。
+let ADB_INFO = {};
 
 // 标签跟着真实状态走（原来写死"默认 Android 10 那台"，登记簿空了就是假话）。
 // 必须是页面级函数：下拉框的 change 只改 value，不会重跑 loadDevices，
@@ -1053,6 +1058,7 @@ async function loadDevices(force){
   try {
     const r = await fetch("/api/devices" + (force ? "?refresh=1" : "")).then(x => x.json());
     DEVICES = (r && r.devices) || [];
+    ADB_INFO = (r && r.adb) || {};
     // 服务端仍会返回 preferred/default（config.yaml 里的历史值），但**界面不再用它们选中**：
     // 设备必须由人点出来，见"测试机"一节开头的注释。
     const regN = (r && r.registry_count) || 0;
@@ -1068,9 +1074,10 @@ async function loadDevices(force){
     const rebuild = sig !== DEV_SIG;
     if (!DEVICES.length) {
       DEV_SIG = sig;
-      sel.innerHTML = '<option value="">（未检测到设备）</option>';
+      sel.innerHTML = '<option value="">' + (ADB_INFO.found === false
+        ? '（未找到 adb）' : '（未检测到设备）') + '</option>';
       sel.disabled = true;
-      if (tip) tip.innerHTML = '没有检测到任何设备。请检查 USB 数据线、手机上是否点了「允许 USB 调试」。';
+      if (tip) tip.innerHTML = adbTipHtml();
       setDevLabel("");
       renderDevCards();
       return;
@@ -1142,6 +1149,26 @@ async function loadDevices(force){
 //   这张汇总还写着"2 台已连接 · 2 台就绪" —— 平台明明已经不用它们了。
 //   未登记的仍然显示（那是硬件事实，藏着会让人以为平台没认出来），
 //   但单独一段、并且不参与"就绪/可用"的统计。
+// 空设备列表时到底该说什么 —— 直接转述服务端 adbtool 的判定。
+// 服务端拿不到（老版本/接口异常）时才退回一句笼统的提示，绝不自己编原因。
+function adbTipText(){
+  if (ADB_INFO && ADB_INFO.message) return ADB_INFO.message;
+  return '没有检测到任何设备。请检查 USB 数据线、手机上是否点了「允许 USB 调试」。';
+}
+
+function adbTipHtml(){
+  const t = esc(adbTipText());
+  // 找到 adb 但一台都没看到时，顺手把"平台用的是哪个 adb"说出来：
+  // 一台机器上常同时装着好几个 adb（Android Studio 的、手机助手的），
+  // 用错一个就解释不了"我明明在命令行里能看到手机"。
+  if (ADB_INFO && ADB_INFO.found && ADB_INFO.exe) {
+    return t + '<div style="margin-top:4px;color:#8a94a6">当前使用的 adb：'
+      + esc(ADB_INFO.exe) + (ADB_INFO.source ? '（来源：' + esc(ADB_INFO.source) + '）' : '')
+      + '</div>';
+  }
+  return t;
+}
+
 function renderDevCards(){
   const box = $("#devgrid"), sum = $("#envsum");
   if (!box) return;
@@ -1155,7 +1182,7 @@ function renderDevCards(){
     if (!managed.length) {
       s = DEVICES.length
         ? "还没有添加测试机（检测到 " + DEVICES.length + " 台已连接，未登记）"
-        : "未检测到测试机";
+        : (ADB_INFO.found === false ? "未找到 adb，无法检测设备" : "未检测到测试机");
     } else {
       s = online.length + " 台已连接 · " + ready + " 台就绪"
         + (managed.length > online.length ? " · " + (managed.length - online.length) + " 台未连接" : "")
@@ -1165,8 +1192,9 @@ function renderDevCards(){
     sum.textContent = s;
   }
   if (!DEVICES.length) {
-    box.innerHTML = '<div class="devcard bad"><div class="dn">未检测到测试机</div>'
-      + '<div class="ds">请检查 USB 数据线、手机上是否点「允许 USB 调试」，然后点右上「全部自检」。</div></div>';
+    box.innerHTML = '<div class="devcard bad"><div class="dn">'
+      + (ADB_INFO.found === false ? "未找到 adb，无法检测设备" : "未检测到测试机")
+      + '</div><div class="ds">' + esc(adbTipText()) + '</div></div>';
     return;
   }
   const cards = managed.map(d => devCardHtml(d, sel));

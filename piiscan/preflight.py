@@ -47,8 +47,11 @@ _LOCAL_FRIDA_PATTERNS = (
 
 
 def _adb(serial: str = "") -> List[str]:
-    exe = os.environ.get("ADB", "adb")
-    return [exe] + (["-s", serial] if serial else [])
+    # 找 adb 的唯一实现是 adbtool：环境变量 → SDK 目录 → PATH → 默认安装位置。
+    # 原来只认 `ADB` 或 PATH 里的 `adb`，Android Studio 装好但从没配过 PATH 的
+    # 机器上，自检会报「未找到 adb」，而它其实躺在 %LOCALAPPDATA%\Android\Sdk 下。
+    from .adbtool import adb_exe
+    return [adb_exe()] + (["-s", serial] if serial else [])
 
 
 def _run(args: List[str], timeout: int = 30) -> subprocess.CompletedProcess:

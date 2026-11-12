@@ -43,7 +43,8 @@ _MAP_RE = re.compile(
 # ---------------------------------------------------------------- adb 封装
 
 def _adb_raw(serial: str, args: List[str], timeout: int = 30) -> str:
-    cmd = [os.environ.get("ADB", "adb")]
+    from .adbtool import adb_exe
+    cmd = [adb_exe()]
     if serial:
         cmd += ["-s", serial]
     cmd += args

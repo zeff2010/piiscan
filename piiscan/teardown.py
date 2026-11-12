@@ -21,7 +21,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 
 def _adb_args(serial: str) -> List[str]:
-    return [os.environ.get("ADB", "adb")] + (["-s", serial] if serial else [])
+    from .adbtool import adb_exe
+    return [adb_exe()] + (["-s", serial] if serial else [])
 
 
 def _run(args: List[str], timeout: int = 180) -> subprocess.CompletedProcess:

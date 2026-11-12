@@ -1,5 +1,37 @@
 # 更新记录
 
+## v1.0.1
+
+修的是「换一台机器部署」才会暴露的问题。
+
+### 修复
+
+- **插上手机却显示「未检测到测试机」**：`list_test_devices()` 原来用
+  `except Exception: out = ""` 包住 `adb devices`，把 `FileNotFoundError`
+  一起吞了 —— 「机器上没装 adb」被渲染成「没有设备」。现在分三种情况报：
+  未找到 adb / adb 能用但设备列表为空 / 设备在但未授权，并各自给出下一步。
+- **adb 只认环境变量和 PATH**：新增 `piiscan/adbtool.py` 作为唯一解析口径
+  （环境变量 `ADB`/`ADB_PATH` → `ANDROID_HOME`/`ANDROID_SDK_ROOT` →
+  PATH → 各平台默认安装位置）。采集、自检、设备列表、收尾、崩溃信息
+  六处原先各写一份，现已统一；Android Studio 装好但没配 PATH 的机器
+  不再报「未找到 adb」。
+- **界面写不清用的是哪个 adb**：设备列表为空时，提示第二行显示平台实际
+  使用的 adb 完整路径与来源，便于核对「命令行里能看到手机、平台看不到」。
+- **构建脚本会删掉版本库**：`dist/build_release.py` 的 `reset_dst()` 会
+  `rmtree` 目标目录下所有内容，而构建输出目录同时是 git 工作区，
+  一重建就把 `.git` 删了。现在跳过 `.git`。
+
+### 文档
+
+- `docs/DEVICE_SETUP.md` 第 1 节补「平台怎么找 adb」与「未检测到测试机」的
+  分类排查表；README 常见问题同步。
+
+### 自检
+
+- 新增 23 项：`adb devices -l` 解析（表头 / `unauthorized` / `no permissions`）、
+  判定顺序（先问 adb 在不在，再问看到几台）、各处不再自行读 `ADB` 环境变量、
+  界面不再写死原因、`/api/devices` 带出 adb 结论。
+
 ## v1.0.0
 
 首个对外版本。把「真机动态采集 → 事件流 → 判定 → 报告」这条链路完整跑通，

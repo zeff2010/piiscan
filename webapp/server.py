@@ -1682,7 +1682,11 @@ def _root_verified(serial: str) -> bool:
 
 
 def _adb_base(serial: str = "") -> List[str]:
-    return [os.environ.get("ADB", "adb")] + (["-s", serial] if serial else [])
+    # 唯一解析口径在 piiscan/adbtool（环境变量 → SDK 目录 → PATH → 默认安装位置）。
+    # 这里若只读 `ADB` 环境变量，用户没配它、但 adb 明明在 PATH 里时，
+    # 设备列表就是空的 —— 而界面会把这解释成「没有手机」。
+    from piiscan import adbtool as _ADB
+    return [_ADB.adb_exe()] + (["-s", serial] if serial else [])
 
 
 def _probe_one(serial: str, state: str, model: str) -> Dict[str, Any]:
@@ -1743,7 +1747,10 @@ def _probe_one(serial: str, state: str, model: str) -> Dict[str, Any]:
     return info
 
 
-_DEV_CACHE: Dict[str, Any] = {"at": 0.0, "data": []}
+# `adb` 字段是「为什么一台都没看到」的结论（2026-11-12）。空列表有多种成因：
+# 没装 adb / 手机没插 / 没授权 / adb 服务卡住。原来一律渲染成「未检测到测试机」，
+# 用户只能猜。这里把 adbtool 的判定结果一并带出去，界面照实转述。
+_DEV_CACHE: Dict[str, Any] = {"at": 0.0, "data": [], "adb": {}}
 _DEV_CACHE_LOCK = threading.Lock()
 _DEV_CACHE_TTL = 6.0
 
@@ -1791,25 +1798,31 @@ def list_test_devices(worker: Optional["Worker"] = None,
         if not force and _DEV_CACHE["data"] and now - _DEV_CACHE["at"] < _DEV_CACHE_TTL:
             devs = [dict(d) for d in _DEV_CACHE["data"]]
         else:
-            devs = []
+            # ★ 异常不能一律当成"没有设备"（2026-11-12 用户换机器部署踩到）：
+            #   原来 `except Exception: out = ""` 把 FileNotFoundError（adb 没装）
+            #   和"手机没插"压成同一句话，界面显示「未检测到测试机」。
+            #   现在分别记下来，交给 adbtool 生成一句能照着做的话。
+            from piiscan import adbtool as _ADB
+            raw, err, missing = "", "", False
             try:
                 p = subprocess.run(_adb_base() + ["devices", "-l"],
                                    capture_output=True, timeout=20)
-                out = ((p.stdout or b"") + (p.stderr or b"")).decode("utf-8", "replace")
-            except Exception:
-                out = ""
-            for ln in out.splitlines()[1:]:
-                parts = ln.split()
-                if len(parts) < 2:
-                    continue
-                serial, state = parts[0], parts[1]
-                model = ""
-                for tok in parts[2:]:
-                    if tok.startswith("model:"):
-                        model = tok.split(":", 1)[1]
-                devs.append(_probe_one(serial, state, model))
+                raw = ((p.stdout or b"") + (p.stderr or b"")).decode("utf-8", "replace")
+                if p.returncode != 0:
+                    err = raw.strip()[:300] or ("adb devices 返回 %d" % p.returncode)
+            except FileNotFoundError:
+                missing = True
+            except subprocess.TimeoutExpired:
+                err = "adb devices 超时（20s）：adb 服务可能卡住，试 `adb kill-server` 后重试"
+            except Exception as e:                       # noqa: BLE001
+                err = "调用 adb 失败：%s" % e
+            devs = []
+            for d in _ADB.parse_devices(raw):
+                devs.append(_probe_one(d["serial"], d["state"], d["model"]))
             _DEV_CACHE["data"] = [dict(d) for d in devs]
             _DEV_CACHE["at"] = now
+            # 结论按**本次**实测重算，不走缓存：插拔手机后点"刷新"要立刻看到变化
+            _DEV_CACHE["adb"] = _ADB.snapshot(devs, raw, err, missing=missing)
 
     # ---- 占用状态（每次都现算，不走缓存：缓存 6 秒会让"刚开跑"看起来还空闲）
     # 登记号码同理现取：改 config.yaml 后点一下刷新就该生效，不该等缓存过期。
@@ -2321,6 +2334,8 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     reg_n = 0
             return self._json({"ok": True, "devices": devs,
+                               # adb 自身的状态：查不到 adb 与"没有手机"必须能分开
+                               "adb": dict(_DEV_CACHE.get("adb") or {}),
                                "device_enabled": bool(self.device_enabled),
                                "default": cur,
                                # 下拉框默认选谁。与 default 分开：default 是

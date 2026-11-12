@@ -21,6 +21,36 @@ adb devices
 > Windows 上常见坑：官方 adb 与手机助手自带的 adb 版本不同、抢同一个 5037 端口。
 > 只留一套，或在 PATH 里让它优先。
 
+### 平台怎么找 adb（换机器部署时优先看这节）
+
+平台按这个顺序找，找到第一个就用：
+
+1. 环境变量 `ADB` 或 `ADB_PATH`（指向 `adb` / `adb.exe` 本身）
+2. 环境变量 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 下的 `platform-tools/`
+3. `PATH` 里的 `adb`
+4. 各平台默认安装位置，例如 Windows 的
+   `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe`、
+   macOS 的 `~/Library/Android/sdk/platform-tools/adb`
+
+**它用的是哪一个，界面上会写出来。** 设备列表为空时，提示的第二行就是
+「当前使用的 adb：<完整路径>（来源：PATH / 环境变量 ADB / 默认安装路径）」。
+
+### 插上手机却显示「未检测到测试机」
+
+先看提示区分是哪一类，不要凭猜：
+
+| 界面写的是 | 含义 | 怎么办 |
+|---|---|---|
+| **未找到 adb，无法检测设备** | 平台没找到 adb（不是手机的问题） | 装 platform-tools；把 `platform-tools` 加进 PATH，或设 `ADB` 指向 `adb.exe`；**重启平台服务**（环境变量只对新进程生效） |
+| 未找到 adb … 但命令行里 `adb devices` 正常 | 平台用的 adb 与你命令行里的不是同一个 | 按提示里显示的路径核对；设 `ADB` 指向你在用的那一个，重启服务 |
+| **未检测到测试机** + 「设备列表是空的」 | adb 能用，但一台都没看到 | ① 手机「开发者选项 → USB 调试」是否打开；② 插上后手机上的「允许 USB 调试」是否点了允许；③ 换数据线/换 USB 口（有些线只能充电）；④ Windows 设备管理器里是否出现 Android ADB Interface（没有就是驱动没装）；⑤ `adb kill-server` 后重试（可能是别的 adb 抢了 5037） |
+| 提示里出现 `unauthorized` | 手机连上了但没授权这台电脑 | 在手机上点「允许 USB 调试」；没弹窗就先「撤销 USB 调试授权」再插 |
+| 提示里出现 `offline` | adb 服务与设备状态不同步 | `adb kill-server` → 重插 → `adb devices` |
+
+另外注意：**`adb devices` 里能看到 ≠ 平台能拿它跑任务**。还要在
+「手机管理」里「添加手机」登记一次（见第 4 节）。未登记的设备会显示成
+「未登记 · 不参与任务」的卡片，下拉框里不会出现。
+
 ---
 
 ## 2. root

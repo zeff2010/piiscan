@@ -48,7 +48,8 @@ _RE_MAC = re.compile(r"^[0-9a-f]{2}([:-]?[0-9a-f]{2}){5}$")
 
 
 def _adb_path() -> str:
-    return os.environ.get("ADB", "adb")
+    from .adbtool import adb_exe
+    return adb_exe()
 
 
 def _sh(cmd: str, serial: str = "", timeout: int = 12) -> str:

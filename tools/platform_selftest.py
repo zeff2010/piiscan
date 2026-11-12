@@ -541,6 +541,19 @@ def t_device_mgmt():
     DM.run(check)
 
 
+def t_adb_diagnosis():
+    """换一台机器部署时「未检测到测试机」的诊断：adb 找不到不能说成没设备。
+
+    2026-11-12 用户把项目拉到另一台电脑上跑，Web 正常、手机插上，界面只写
+    「未检测到测试机」。真实原因是那台机器上 adb 不在 PATH 里，而
+    `list_test_devices()` 的 `except Exception: out = ""` 把 FileNotFoundError
+    一起吞了 —— 没装 adb / 手机没插 / 没授权，三种毛病一句话。
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import _adb_tests as AD
+    AD.run(check)
+
+
 def t_ai_profile():
     """AI 模型服务档案（增删/启用/密钥不外泄/DeepSeek）+ 停止能打断模型调用。"""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -918,6 +931,7 @@ def main() -> int:
     t_device_lock()
     t_device_phone()
     t_device_mgmt()
+    t_adb_diagnosis()
     t_ai_profile()
     t_stuck_guard()
     t_ui_pages()

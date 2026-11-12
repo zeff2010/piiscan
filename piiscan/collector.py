@@ -623,7 +623,10 @@ class ScanResult:
 
 
 def _adb_args(serial: str) -> List[str]:
-    return [os.environ.get("ADB", "adb")] + (["-s", serial] if serial else [])
+    # 路径解析统一在 adbtool（2026-11-12）：这里若自己读 `ADB` 环境变量，
+    # 用户没配 ADB 但 adb 在 PATH / SDK 目录里时，本模块就找不到它。
+    from .adbtool import adb_exe
+    return [adb_exe()] + (["-s", serial] if serial else [])
 
 
 def _run(args: List[str], timeout: int = 180) -> subprocess.CompletedProcess:
