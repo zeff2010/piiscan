@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>$title</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --line: #e3e6ea;
+    --ink: #1c1f23; --ink2: #5b6270; --ink3: #8b93a1;
+    --high: #c0392b; --highbg: #fdecea;
+    --mid: #b06a00; --midbg: #fdf3e3;
+    --ok: #2f6b34; --okbg: #f1f8f0;
+    --skip: #6b6f76; --skipbg: #f0f1f3;
+    --accent: #1f5fa8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "SimSun", sans-serif;
+    font-size: 15px; line-height: 1.8;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 28px 20px 70px; }
+  .doc {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 42px 48px 54px;
+  }
+  .attach { color: var(--ink3); font-size: 13px; margin-bottom: 26px; }
+  h1.title {
+    text-align: center; font-size: 22px; font-weight: 600;
+    margin: 18px 0 30px; line-height: 1.6;
+  }
+  h2.sec {
+    font-size: 16px; font-weight: 600; margin: 30px 0 12px;
+    border-bottom: 1px solid var(--line); padding-bottom: 8px;
+  }
+  table.meta { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  table.meta th {
+    text-align: left; width: 132px; color: var(--ink2); font-weight: 500;
+    padding: 6px 12px 6px 0; white-space: nowrap; vertical-align: top;
+  }
+  table.meta td { padding: 6px 0; }
+  .lead { margin: 14px 0 8px; text-align: justify; }
+  .lead .fill { border-bottom: 1px solid #999; padding: 0 2px; }
+
+  .item { border: 1px solid var(--line); border-radius: 8px; margin: 14px 0; overflow: hidden; }
+  .item > .hd {
+    padding: 11px 16px; font-weight: 600; font-size: 15px;
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  }
+  .item.fail > .hd { background: var(--highbg); border-bottom: 1px solid #f0c3bd; }
+  .item.suspect > .hd { background: var(--midbg); border-bottom: 1px solid #ecd3a8; }
+  .item.pass > .hd { background: var(--okbg); border-bottom: 1px solid #cfe0cd; }
+  .item.not_tested > .hd { background: var(--skipbg); border-bottom: 1px solid #dcdfe3; }
+  .item > .bd { padding: 14px 16px 16px; }
+  .tag {
+    font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 10px;
+    background: #fff; border: 1px solid var(--line); color: var(--ink2);
+  }
+  .item.fail .tag { color: var(--high); border-color: #e8b6b0; }
+  .item.suspect .tag { color: var(--mid); border-color: #e3cb9c; }
+  .item.pass .tag { color: var(--ok); border-color: #bcd8be; }
+  .item.not_tested .tag { color: var(--skip); }
+  .label { color: var(--ink2); font-weight: 500; }
+  .desc { margin: 4px 0 10px; text-align: justify; }
+  /* 行为主体：复核员看完问题描述后的第一个问题就是"谁干的"，
+     字号不能比正文小，否则会被当成脚注跳过。 */
+  .attr { margin: 2px 0 4px; font-size: 14px; }
+  .attrnote { margin: 0 0 8px; color: var(--ink2); font-size: 13px;
+    background: #f7f9fc; border-left: 3px solid #cfe0f7; padding: 7px 11px; border-radius: 0 6px 6px 0; }
+  .attr.warn { color: var(--high); background: var(--highbg); border-left-color: #e8b6b0;
+    padding: 8px 11px; border-radius: 0 6px 6px 0; font-size: 13px; }
+  .stackattr { color: var(--ink2); font-size: 12.5px; margin: 6px 0 2px;
+    font-family: ui-monospace, Consolas, monospace; word-break: break-all; }
+  .evidence { color: var(--ink3); font-size: 13px; margin-top: 6px; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--accent); font-size: 13.5px; }
+  pre.stack {
+    background: #f7f8fa; border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 12px; font-size: 12px; line-height: 1.55; overflow-x: auto;
+    white-space: pre-wrap; word-break: break-all; margin: 8px 0 0;
+  }
+  table.facts { border-collapse: collapse; margin: 8px 0; font-size: 13.5px; }
+  table.facts th {
+    text-align: left; color: var(--ink2); font-weight: 500; padding: 4px 14px 4px 0;
+    vertical-align: top; white-space: nowrap;
+  }
+  table.facts td { padding: 4px 0; }
+  /* 首启着陆的过程表：每行一步，六列都是长文本，必须能换行、能对齐顶部。
+     `th` 不 nowrap 的话表头会把第一列挤成一条竖线。 */
+  table.ltable {
+    border-collapse: collapse; width: 100%; margin: 10px 0 4px; font-size: 12.8px;
+    table-layout: fixed;
+  }
+  table.ltable th, table.ltable td {
+    border-bottom: 1px solid var(--line); padding: 6px 8px;
+    text-align: left; vertical-align: top; line-height: 1.55;
+    word-break: break-word;
+  }
+  table.ltable th {
+    color: var(--ink2); font-weight: 500; background: #fafbfc;
+    white-space: normal;
+  }
+  table.ltable th:nth-child(1), table.ltable td:nth-child(1) { width: 34px; }
+  table.ltable th:nth-child(2), table.ltable td:nth-child(2) { width: 96px; }
+  table.ltable th:nth-child(7), table.ltable td:nth-child(7) { width: 92px; }
+  code { background: #f2f4f7; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  pre.x {
+    background: #f7f8fa; border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 12px; font-size: 12px; line-height: 1.6;
+    white-space: pre-wrap; word-break: break-all; margin: 6px 0 0;
+  }
+  /* 内嵌政策/协议全文：比 pre.x 多给一点行高与限高，长文也只是滚动条变长，
+     不把整页撑成几万像素（复核员要能在同一屏里对照结论与原文）。 */
+  pre.doc {
+    background: #fbfbfc; border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px 14px; font-size: 12.5px; line-height: 1.75;
+    white-space: pre-wrap; word-break: break-word; margin: 6px 0 0;
+    max-height: 520px; overflow: auto;
+  }
+  ul.lk { margin: 4px 0 0; padding-left: 20px; font-size: 13px; line-height: 1.7; }
+  ul.lk li { word-break: break-all; }
+  ol.repro { margin: 8px 0 0; padding-left: 22px; font-size: 13.5px; line-height: 1.75; }
+  ol.repro li { margin-bottom: 6px; }
+  ol.repro li::marker { color: var(--accent); font-weight: 600; }
+  a { color: var(--accent); word-break: break-all; }
+
+  .kpis { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 4px; }
+  .kpi {
+    flex: 1 1 130px; border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px; text-align: center;
+  }
+  .kpi-v { font-size: 24px; font-weight: 600; }
+  .kpi-l { font-size: 12px; color: var(--ink3); margin-top: 2px; }
+  .kpi.f { background: var(--highbg); border-color: #f0c3bd; } .kpi.f .kpi-v { color: var(--high); }
+  .kpi.s { background: var(--midbg); border-color: #ecd3a8; } .kpi.s .kpi-v { color: var(--mid); }
+  .kpi.p { background: var(--okbg); border-color: #cfe0cd; } .kpi.p .kpi-v { color: var(--ok); }
+  .kpi.n { background: var(--skipbg); } .kpi.n .kpi-v { color: var(--skip); }
+
+  table.cover { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 8px; }
+  table.cover th, table.cover td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; }
+  table.cover th { background: #f7f8fa; font-weight: 500; color: var(--ink2); }
+  /* 前提异常提示框：用于"这次检测成不成立"这类必须一眼看到的信息 */
+  .warnbox {
+    border: 1px solid var(--high); border-left: 4px solid var(--high);
+    background: var(--highbg); border-radius: 6px;
+    padding: 14px 18px; margin: 12px 0 14px;
+  }
+  .warnbox p { margin: 6px 0; }
+  .warnbox p:first-child { margin-top: 0; }
+  .warnbox p:last-child { margin-bottom: 0; }
+  .foot { margin-top: 34px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .sign { text-align: right; color: var(--ink2); margin-top: 22px; }
+  .muted { color: var(--ink3); font-size: 13px; }
+  /* 证据图集：截图缩略图一行一张（手机竖屏图，横排会看不清） */
+  .gallery { display: flex; flex-wrap: wrap; gap: 18px; margin: 12px 0 4px; }
+  .gallery figure {
+    margin: 0; width: 232px; border: 1px solid var(--line);
+    border-radius: 6px; overflow: hidden; background: #fff;
+  }
+  .gallery img { display: block; width: 100%; height: auto; }
+  .gallery figcaption {
+    font-size: 12.5px; color: var(--ink2); padding: 6px 8px;
+    border-top: 1px solid var(--line); line-height: 1.45;
+  }
+  .gallery figcaption .muted { font-size: 12px; }
+  /* 证据截图：直接放在检测项里（同一张图会被多个项引用，这里只管好看） */
+  .shots { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 4px; }
+  .shots figure {
+    margin: 0; width: 208px; border: 1px solid var(--line);
+    border-radius: 6px; overflow: hidden; background: #fff;
+  }
+  .shots img { display: block; width: 100%; height: auto; }
+  .shots figcaption {
+    font-size: 12px; color: var(--ink2); padding: 5px 7px;
+    border-top: 1px solid var(--line); line-height: 1.4;
+  }
+  .evidence.warn { color: var(--high); }
+  /* 逐次点击留痕：左图右文。图必须够大 —— 红圈标的是"点在哪里"，
+     缩得太小就只剩一个红点，复核员看不出点的是哪个按钮。 */
+  .ctrail { margin: 14px 0 4px; }
+  .citem {
+    display: flex; gap: 14px; align-items: flex-start;
+    border: 1px solid var(--line); border-left: 4px solid #cfe0cd;
+    border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; background: #fff;
+  }
+  /* 点了没反应的一次：左边描成琥珀色。整节里最该被复核员看见的就是这类。 */
+  .citem.same { border-left-color: #e3cb9c; background: #fdfaf3; }
+  .citem figure { margin: 0; width: 132px; flex: 0 0 132px; }
+  .citem img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 4px; }
+  .citem figcaption { font-size: 11.5px; color: var(--ink3); padding-top: 4px; line-height: 1.35; }
+  .citem .cbody { flex: 1 1 auto; min-width: 0; }
+  .citem .chead { font-size: 14px; font-weight: 600; margin-bottom: 6px; display: flex;
+    gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .citem p { margin: 3px 0; font-size: 13.5px; text-align: justify; }
+  @media print { body { background: #fff; } .doc { border: 0; padding: 0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="doc">
+
+<div class="attach">附件</div>
+<h1 class="title">关于$app_name App违法违规<br/>收集使用个人信息等问题的评估报告</h1>
+
+<h2 class="sec">应用软件信息</h2>
+<table class="meta">
+  <tr><th>应用软件名称：</th><td>$app_name</td></tr>
+  <tr><th>应用软件版本：</th><td>$version</td></tr>
+  <tr><th>来源应用市场：</th><td>$source_market</td></tr>
+  <tr><th>主办单位：</th><td>$operator</td></tr>
+  <tr><th>发布日期：</th><td>$published_at</td></tr>
+</table>
+
+<h2 class="sec">静态档案</h2>
+$static_table
+
+<h2 class="sec">检测过程</h2>
+$flow_table
+
+$app_status
+
+<h2 class="sec">验证情况</h2>
+<p class="lead">$lead</p>
+
+$items_html
+
+<h2 class="sec">覆盖情况</h2>
+<p class="muted">$coverage_note</p>
+$coverage_table
+
+<h2 class="sec">首启着陆（同意后如何进入主页面）</h2>
+<p class="muted">点击「同意」之后，应用通常还要经过开屏广告、年龄确认、欢迎引导页、
+促销弹窗、兴趣选择等环节才会进入主页面。本节记录本次是通过哪些环节、用什么动作
+走过来的，以及最终有没有真的进入主页面。</p>
+$landing_section
+
+<h2 class="sec">点击留痕（逐次）</h2>
+$click_trail
+
+<h2 class="sec">人工复核材料</h2>
+<p class="muted">本节全部内容取自本次检测的实际记录，供复核员核对结论、复现问题之用。</p>
+$review_materials
+
+<div class="foot">
+<h2 class="sec" style="border:0;padding:0;margin:0 0 10px">处置建议</h2>
+<p>$advise</p>
+<div class="sign">验证单位：$issuer</div>
+</div>
+
+</div>
+</div>
+</body>
+</html>

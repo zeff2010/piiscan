@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>$title</title>
+<style>
+:root{
+  --ink:#16202e; --ink2:#41556d; --ink3:#7c8fa6; --line:#e2e8f0; --line2:#eef2f7;
+  --bg:#f4f6fa; --card:#ffffff; --brand:#1e5eb8; --brand2:#2f7fe0;
+  --high:#c92a2a; --highbg:#fdf0f0; --mid:#c07600; --midbg:#fff8e9;
+  --low:#3d7f9c; --lowbg:#eef7fb; --ok:#1f7a4d;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+.wrap{max-width:1000px;margin:0 auto;padding:28px 20px 80px;}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:22px 26px;margin-bottom:18px;box-shadow:0 1px 3px rgba(22,32,46,.04);}
+h1{font-size:25px;margin:0 0 6px;letter-spacing:.4px;}
+h2{font-size:18px;margin:0 0 14px;padding-left:11px;border-left:4px solid var(--brand);}
+h3{font-size:16px;margin:22px 0 10px;}
+.sub{color:var(--ink3);font-size:13px;}
+.head{background:linear-gradient(135deg,#1e5eb8,#2f7fe0);color:#fff;border-radius:12px;
+  padding:26px 28px;margin-bottom:18px;}
+.head h1{color:#fff;} .head .sub{color:#cfe1f8;}
+.badges{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;}
+.badge{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);
+  padding:4px 11px;border-radius:20px;font-size:12.5px;}
+table{width:100%;border-collapse:collapse;font-size:13.5px;}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line2);vertical-align:top;}
+th{color:var(--ink2);font-weight:600;background:#fafbfd;width:150px;white-space:nowrap;}
+code{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:12.5px;
+  background:#f2f5f9;padding:1.5px 6px;border-radius:4px;word-break:break-all;color:#233a55;}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:12px;}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fbfcfe;}
+.kpi .v{font-size:26px;font-weight:700;line-height:1.25;color:var(--brand);}
+.kpi .l{font-size:12.5px;color:var(--ink3);margin-top:2px;}
+.kpi.danger .v{color:var(--high);} .kpi.warn .v{color:var(--mid);}
+.finding{border:1px solid var(--line);border-left:4px solid var(--low);border-radius:10px;
+  padding:18px 20px;margin-bottom:16px;background:#fff;}
+.finding.high{border-left-color:var(--high);}
+.finding.mid{border-left-color:var(--mid);}
+.finding .fh{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px;}
+.tag{font-size:12px;padding:2.5px 9px;border-radius:20px;font-weight:600;}
+.tag.high{background:var(--highbg);color:var(--high);}
+.tag.mid{background:var(--midbg);color:var(--mid);}
+.tag.low{background:var(--lowbg);color:var(--low);}
+.tag.conf{background:#e9f7ef;color:var(--ok);}
+.tag.susp{background:#f0f2f6;color:var(--ink2);}
+.tag.lv{background:#eef3fb;color:var(--brand);}
+.finding .qid{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--ink3);}
+.finding .ft{font-size:16.5px;font-weight:650;margin:6px 0 10px;}
+.label{font-size:13px;font-weight:700;color:var(--brand);margin:16px 0 7px;
+  display:flex;align-items:center;gap:7px;}
+.label:before{content:"";width:3px;height:14px;background:var(--brand);border-radius:2px;}
+.desc{background:#f8fafc;border:1px solid var(--line2);border-radius:8px;padding:13px 15px;
+  font-size:14px;color:#243447;}
+ol.steps,ul.plain{margin:0;padding-left:22px;font-size:13.5px;color:#2c3e50;}
+ol.steps li,ul.plain li{margin:3px 0;}
+details{margin-top:10px;border:1px solid var(--line);border-radius:8px;background:#fafbfd;}
+details summary{cursor:pointer;padding:9px 13px;font-size:13px;color:var(--brand);font-weight:600;}
+details pre{margin:0;padding:12px 14px;overflow:auto;font-size:12px;line-height:1.7;
+  background:#1b2536;color:#d8e6f5;border-radius:0 0 8px 8px;
+  font-family:ui-monospace,Consolas,monospace;max-height:420px;white-space:pre;}
+pre.excerpt{margin:6px 0 0;padding:13px 15px;overflow:auto;font-size:12.5px;line-height:1.8;
+  background:#f8fafc;border:1px solid var(--line2);border-radius:8px;color:#2c3e50;
+  max-height:380px;white-space:pre-wrap;word-break:break-all;}
+code{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;background:#eef3fb;
+  color:#1e5eb8;padding:1px 5px;border-radius:4px;word-break:break-all;}
+.shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:8px;}
+figure{margin:0;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fafbfd;}
+figure img{width:100%;display:block;}
+figcaption{padding:7px 10px;font-size:12.5px;color:var(--ink2);text-align:center;}
+.muted{color:var(--ink3);font-size:13.5px;}
+.advise{background:#f0f7f1;border:1px solid #cfe6d6;border-radius:8px;padding:12px 15px;
+  font-size:13.5px;color:#245239;}
+.note{font-size:12.5px;color:var(--ink3);line-height:1.8;}
+/* AI 参与过程（3.10 节）用到的展示样式。
+   模型原始输出用等宽小字放在 pre 里：既要让人能核对它的原话，
+   又不能让它喧宾夺主 —— 结论用大字，原话用浅色小字，层级分明。 */
+.airaw{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--ink2);
+  background:#f8fafc;border:1px solid var(--line2);border-radius:6px;
+  padding:8px 10px;margin:6px 0 0;white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto;}
+.ainotes{font-size:12.5px;color:var(--ink2);line-height:1.9;margin:6px 0 12px;padding-left:20px;}
+.ainotes li{margin-bottom:6px;}
+.warnlist li{color:var(--mid);}
+h4{font-size:13.5px;color:var(--ink);margin:14px 0 6px;}
+/* 采集有效性警示：验证码拦截、App 反复退出等会削弱全部动态证据的情况。
+   用醒目但不刺眼的橙色，出现在正文之前，避免被当成普通说明跳过。 */
+.warn{background:#fff8ec;border:1px solid #f0d9ae;border-left:4px solid #e8930c;
+  border-radius:8px;padding:12px 15px;font-size:13.5px;color:#7a4a06;line-height:1.85;
+  margin:0 0 14px;}
+.footer{text-align:center;color:var(--ink3);font-size:12.5px;padding:22px 0 0;}
+.pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:6px;
+  background:#eef3fb;color:var(--brand);margin:2px 3px 2px 0;}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media(max-width:760px){.two{grid-template-columns:1fr}th{width:110px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+$header
+
+$summary
+
+$findings
+
+$appendix
+
+<div class="footer">$footer</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,2622 @@
+[
+  {
+    "permission": "android.permission.SEND_SMS",
+    "permissionName": "发送短信",
+    "permissionDes": "允许应用发送短信。此权限可能会导致意外收费。恶意应用可能会未经您的确认而发送短信，由此产生相关费用。"
+  },
+  {
+    "permission": "android.permission.SEND_SMS_NO_CONFIRMATION",
+    "permissionName": "不经确认直接发送短信",
+    "permissionDes": "允许应用程序发送短信。恶意应用程序可能会未经您的确认而发送短信，由此产生相关费用。"
+  },
+  {
+    "permission": "android.permission.RECEIVE_SMS",
+    "permissionName": "接收讯息（短信）",
+    "permissionDes": "允许应用接收和处理短信。这就意味着，该应用可能会监视发送到您设备的短信，或删除发送到您设备的短信而不向您显示。"
+  },
+  {
+    "permission": "android.permission.RECEIVE_MMS",
+    "permissionName": "接收讯息（彩信）",
+    "permissionDes": "允许应用接收和处理彩信。这就意味着，该应用可能会监视发送到您设备的彩信，或删除发送到您设备的彩信而不向您显示。"
+  },
+  {
+    "permission": "android.permission.RECEIVE_EMERGENCY_BROADCAST",
+    "permissionName": "接收紧急广播",
+    "permissionDes": "允许应用接收和处理紧急广播消息。此权限仅适用于系统应用。"
+  },
+  {
+    "permission": "android.permission.READ_CELL_BROADCASTS",
+    "permissionName": "读取小区广播消息",
+    "permissionDes": "允许应用读取您的设备收到的小区广播消息。小区广播消息是在某些地区发送的、用于发布紧急情况警告的提醒信息。恶意应用可能会在您收到小区紧急广播时干扰您设备的性能或操作。"
+  },
+  {
+    "permission": "android.permission.READ_SMS",
+    "permissionName": "读取文字讯息（短信或彩信）",
+    "permissionDes": "允许应用读取您手机上存储的所有短信"
+  },
+  {
+    "permission": "android.permission.WRITE_SMS",
+    "permissionName": "编辑您的讯息（短信或彩信）",
+    "permissionDes": "允许应用对平板电脑或SIM卡上存储的短信执行写入操作。恶意应用可能会删除您的短信。"
+  },
+  {
+    "permission": "android.permission.RECEIVE_WAP_PUSH",
+    "permissionName": "接收 wap推送",
+    "permissionDes": "允许应用接收和处理 WAP 消息。此权限包括监视发送给您的消息或删除发送给您的消息而不向您显示的功能。"
+  },
+  {
+    "permission": "android.permission.READ_CONTACTS",
+    "permissionName": "读取通讯录",
+    "permissionDes": "允许应用读取您手机上存储的联系人的相关数据，包括您通过打电话、发送电子邮件或以其他方式与特定个人通信的频率。此权限可让应用保存您的联系人数据，而恶意应用可能会在您不知情的情况下分享联系人数据。"
+  },
+  {
+    "permission": "android.permission.WRITE_CONTACTS",
+    "permissionName": "编辑通讯录",
+    "permissionDes": "允许应用修改您手机上存储的联系人的相关数据，包括您通过打电话、发送电子邮件或以其他方式与特定联系人通信的频率。此权限可让应用删除联系人数据。"
+  },
+  {
+    "permission": "android.permission.BIND_DIRECTORY_SEARCH",
+    "permissionName": "绑定目录搜索",
+    "permissionDes": "允许应用绑定目录搜索"
+  },
+  {
+    "permission": "android.permission.READ_CALL_LOG",
+    "permissionName": "读取通话记录",
+    "permissionDes": "允许应用读取您的通话记录"
+  },
+  {
+    "permission": "android.permission.WRITE_CALL_LOG",
+    "permissionName": "编辑通话记录",
+    "permissionDes": "允许应用修改手机的通话记录，包括有关来电和外拨电话的数据。恶意应用可能会借此清除或修改您的通话记录。"
+  },
+  {
+    "permission": "android.permission.READ_SOCIAL_STREAM",
+    "permissionName": "读取您的社交信息流",
+    "permissionDes": "允许应用访问并同步您和朋友的社交动态信息。在分享信息时一定要小心，因为此权限可让该应用读取您与社交网络上的朋友之间的交流信息。"
+  },
+  {
+    "permission": "android.permission.WRITE_SOCIAL_STREAM",
+    "permissionName": "写入您的社交信息流",
+    "permissionDes": "允许应用显示您朋友的社交动态信息。在分享信息时一定要小心，因为此权限可让该应用冒充某个朋友编写消息。请注意：此权限可能不适用于所有社交网络。"
+  },
+  {
+    "permission": "android.permission.READ_PROFILE",
+    "permissionName": "读取您自己的名片",
+    "permissionDes": "允许应用读取您设备上存储的个人资料信息，例如您的姓名和联系信息。这意味着该应用可以识别您的身份，并可能将您的个人资料信息发送给他人。"
+  },
+  {
+    "permission": "android.permission.WRITE_PROFILE",
+    "permissionName": "修改您自己的名片",
+    "permissionDes": "允许应用更改或添加您设备上存储的个人资料信息，例如您的姓名和联系信息。这意味着该应用可以识别您的身份，并可能将您的个人资料信息发送给他人。"
+  },
+  {
+    "permission": "android.permission.READ_CALENDAR",
+    "permissionName": "读取日历",
+    "permissionDes": "允许应用读取您手机上存储的所有日历活动，并分享或保存您的日历数据。"
+  },
+  {
+    "permission": "android.permission.WRITE_CALENDAR",
+    "permissionName": "编辑日历",
+    "permissionDes": "允许应用在手机上添加、移除或更改日历活动。此应用可能会以日历所有者的身份发送消息，或在不通知所有者的情况下更改活动。"
+  },
+  {
+    "permission": "android.permission.READ_USER_DICTIONARY",
+    "permissionName": "读取您添加到字典的字词",
+    "permissionDes": "允许应用读取用户可能已在用户字典中存储的所有字词、名称和词组"
+  },
+  {
+    "permission": "android.permission.WRITE_USER_DICTIONARY",
+    "permissionName": "向用户定义的字典添加字词",
+    "permissionDes": "允许应用向用户字典中写入新词"
+  },
+  {
+    "permission": "com.android.browser.permission.READ_HISTORY_BOOKMARKS",
+    "permissionName": "读取您的网络书签和历史记录",
+    "permissionDes": "允许应用读取浏览器访问过的所有网址记录以及浏览器的所有书签。请注意：此权限可能不适用于第三方浏览器或具备网页浏览功能的其他应用。"
+  },
+  {
+    "permission": "com.android.browser.permission.WRITE_HISTORY_BOOKMARKS",
+    "permissionName": "写入网络书签和历史记录",
+    "permissionDes": "允许应用修改您手机上存储的浏览器历史记录或浏览器书签。此权限可让该应用清除或修改浏览器数据。请注意：此权限可能不适用于第三方浏览器或具备网页浏览功能的其他应用。"
+  },
+  {
+    "permission": "com.android.alarm.permission.SET_ALARM",
+    "permissionName": "设置闹钟",
+    "permissionDes": "允许应用在已安装的闹钟应用中设置闹钟。有些闹钟应用可能无法实现此功能。"
+  },
+  {
+    "permission": "com.android.voicemail.permission.ADD_VOICEMAIL",
+    "permissionName": "添加语音邮件",
+    "permissionDes": "允许应用在您的语音信箱中留言"
+  },
+  {
+    "permission": "android.permission.ACCESS_FINE_LOCATION",
+    "permissionName": "访问精准定位",
+    "permissionDes": "允许应用根据 GPS 或网络来源（例如基站和 WLAN 网络）获取您的位置信息。您的手机必须支持并开启这些位置信息服务，此应用才能使用这些服务。这可能会增加耗电量。"
+  },
+  {
+    "permission": "android.permission.ACCESS_COARSE_LOCATION",
+    "permissionName": "访问粗略位置",
+    "permissionDes": "允许应用根据网络来源（例如基站和 WLAN 网络）获取您的位置信息。您的手机必须支持并开启这些位置信息服务，此应用才能使用这些服务。"
+  },
+  {
+    "permission": "android.permission.ACCESS_MOCK_LOCATION",
+    "permissionName": "使用模拟地点来源进行测试",
+    "permissionDes": "允许应用创建用于测试的模拟位置源或安装新的位置提供程序。此权限可让该应用覆盖由其他位置源（如GPS）或位置提供程序返回的位置和/或状态信息。"
+  },
+  {
+    "permission": "android.permission.ACCESS_LOCATION_EXTRA_COMMANDS",
+    "permissionName": "获取额外的位置信息提供程序命令",
+    "permissionDes": "允许应用使用其他的位置信息提供程序命令。此权限使该应用可以干扰GPS或其他位置信息源的运作。"
+  },
+  {
+    "permission": "android.permission.INSTALL_LOCATION_PROVIDER",
+    "permissionName": "安装位置信息提供程序",
+    "permissionDes": "允许应用创建用于测试的模拟位置源或安装新的位置提供程序。此权限可让该应用覆盖由其他位置源（如GPS）或位置提供程序返回的位置和/或状态信息。"
+  },
+  {
+    "permission": "android.permission.INTERNET",
+    "permissionName": "拥有完全的网络访问权限",
+    "permissionDes": "允许应用创建网络套接字和使用自定义网络协议。浏览器和其他某些应用提供了向互联网发送数据的途径，因此应用无需该权限即可向互联网发送数据。"
+  },
+  {
+    "permission": "android.permission.ACCESS_NETWORK_STATE",
+    "permissionName": "查看网络连接",
+    "permissionDes": "允许应用查看网络连接的相关信息，例如存在和连接的网络。"
+  },
+  {
+    "permission": "android.permission.ACCESS_WIFI_STATE",
+    "permissionName": "查看WLAN连接",
+    "permissionDes": "允许应用查看WLAN网络的相关信息，例如是否启用了WLAN以及连接的WLAN设备的名称。"
+  },
+  {
+    "permission": "android.permission.CHANGE_WIFI_STATE",
+    "permissionName": "连接WLAN网络和断开连接",
+    "permissionDes": "允许应用与WLAN接入点建立和断开连接，以及更改WLAN网络的设备配置。"
+  },
+  {
+    "permission": "android.permission.ACCESS_WIMAX_STATE",
+    "permissionName": "建立或中断 WiMAX 网络连接",
+    "permissionDes": "允许应用确定是否启用了 WiMAX 以及连接的任何 WiMAX 网络的相关信息"
+  },
+  {
+    "permission": "android.permission.CHANGE_WIMAX_STATE",
+    "permissionName": "更改 WiMAX 状态",
+    "permissionDes": "允许应用建立和断开手机与 WiMAX 网络之间的连接。"
+  },
+  {
+    "permission": "android.permission.BLUETOOTH",
+    "permissionName": "与蓝牙设备配对",
+    "permissionDes": "允许应用查看手机上的蓝牙配置，以及与配对设备建立连接或接受其连接请求。"
+  },
+  {
+    "permission": "android.permission.BLUETOOTH_ADMIN",
+    "permissionName": "访问蓝牙设置",
+    "permissionDes": "允许应用配置本地蓝牙手机，并允许其查找远程设备且与之配对。"
+  },
+  {
+    "permission": "android.permission.BLUETOOTH_STACK",
+    "permissionName": "蓝牙协议栈访问文件",
+    "permissionDes": "允许应用通过蓝牙协议栈访问文件，此权限只能被蓝牙程序使用"
+  },
+  {
+    "permission": "android.permission.NFC",
+    "permissionName": "控制近距离通信",
+    "permissionDes": "允许应用与近距离无线通信(NFC)标签、卡和读取器通信。"
+  },
+  {
+    "permission": "android.permission.CONNECTIVITY_INTERNAL",
+    "permissionName": "使用特权ConnectivityManager API",
+    "permissionDes": "允许应用使用特权ConnectivityManager API"
+  },
+  {
+    "permission": "android.permission.RECEIVE_DATA_ACTIVITY_CHANGE",
+    "permissionName": "接收数据活动变更",
+    "permissionDes": "允许应用接收数据活动变更"
+  },
+  {
+    "permission": "android.permission.GET_ACCOUNTS",
+    "permissionName": "获取app账户",
+    "permissionDes": "允许应用获取手机已知的账号列表，其中可能包括由已安装的应用创建的所有账号。"
+  },
+  {
+    "permission": "android.permission.AUTHENTICATE_ACCOUNTS",
+    "permissionName": "创建账户并设置密码",
+    "permissionDes": "允许应用使用 AccountManager 的账户身份验证程序功能，包括创建账户以及获取和设置其密码。"
+  },
+  {
+    "permission": "android.permission.USE_CREDENTIALS",
+    "permissionName": "使用设备上的账户",
+    "permissionDes": "允许应用请求身份验证令牌"
+  },
+  {
+    "permission": "android.permission.MANAGE_ACCOUNTS",
+    "permissionName": "添加或移除账户",
+    "permissionDes": "允许应用执行添加账户、移除账户、删除账户密码等操作。"
+  },
+  {
+    "permission": "android.permission.ACCOUNT_MANAGER",
+    "permissionName": "作为 AccountManagerService",
+    "permissionDes": "允许应用调用 AccountAuthenticators"
+  },
+  {
+    "permission": "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+    "permissionName": "接收WLAN多播",
+    "permissionDes": "允许应用使用多播地址接收发送到WLAN网络上所有设备（而不仅仅是您的手机）的数据包。该操作的耗电量比非多播模式要大。"
+  },
+  {
+    "permission": "android.permission.VIBRATE",
+    "permissionName": "控制振动",
+    "permissionDes": "允许应用控制振动器"
+  },
+  {
+    "permission": "android.permission.FLASHLIGHT",
+    "permissionName": "控制闪光灯",
+    "permissionDes": "允许应用控制闪光灯"
+  },
+  {
+    "permission": "android.permission.WAKE_LOCK",
+    "permissionName": "防止手机休眠",
+    "permissionDes": "允许应用阻止手机进入休眠状态"
+  },
+  {
+    "permission": "android.permission.MODIFY_AUDIO_SETTINGS",
+    "permissionName": "更改您的音频设置",
+    "permissionDes": "允许应用修改全局音频设置，例如音量和用于输出的扬声器。"
+  },
+  {
+    "permission": "android.permission.MANAGE_USB",
+    "permissionName": "管理USB设备的偏好设置和权限",
+    "permissionDes": "允许应用管理针对USB设备的偏好设置和权限"
+  },
+  {
+    "permission": "android.permission.ACCESS_MTP",
+    "permissionName": "实现MTP协议",
+    "permissionDes": "允许应用访问内核MTP驱动程序，以便实现MTP USB协议。"
+  },
+  {
+    "permission": "android.permission.HARDWARE_TEST",
+    "permissionName": "测试硬件",
+    "permissionDes": "允许应用控制各种外围设备以进行硬件测试"
+  },
+  {
+    "permission": "android.permission.NET_ADMIN",
+    "permissionName": "访问网络设置",
+    "permissionDes": "允许应用访问网络设置"
+  },
+  {
+    "permission": "android.permission.REMOTE_AUDIO_PLAYBACK",
+    "permissionName": "播放远程音频",
+    "permissionDes": "允许播放远程音频"
+  },
+  {
+    "permission": "android.permission.RECORD_AUDIO",
+    "permissionName": "录音",
+    "permissionDes": "允许应用使用麦克风进行录音"
+  },
+  {
+    "permission": "android.permission.CAMERA",
+    "permissionName": "拍摄",
+    "permissionDes": "允许应用随时使用相机拍摄照片和录制视频"
+  },
+  {
+    "permission": "android.permission.PROCESS_OUTGOING_CALLS",
+    "permissionName": "监控呼出电话",
+    "permissionDes": "允许应用在拨出电话时查看拨打的电话号码，并选择改为拨打其他号码或完全中止通话。"
+  },
+  {
+    "permission": "android.permission.MODIFY_PHONE_STATE",
+    "permissionName": "修改手机状态",
+    "permissionDes": "允许应用控制设备的电话功能。拥有此权限的应用可在不通知您的情况下执行切换网络、开关手机无线装置等此类操作。"
+  },
+  {
+    "permission": "android.permission.READ_PHONE_STATE",
+    "permissionName": "读取设备信息",
+    "permissionDes": "允许应用访问设备的电话功能。此权限可让该应用确定本机号码和设备 ID、是否正处于通话状态以及拨打的号码。"
+  },
+  {
+    "permission": "android.permission.READ_PRIVILEGED_PHONE_STATE",
+    "permissionName": "读取特许手机状态和身份",
+    "permissionDes": "允许应用读取特许手机状态和身份"
+  },
+  {
+    "permission": "android.permission.CALL_PHONE",
+    "permissionName": "拨打电话",
+    "permissionDes": "允许应用在您未执行操作的情况下拨打电话号码。此权限可能会导致意外收费或呼叫。请注意，此权限不允许该应用拨打紧急电话号码。恶意应用可通过拨打电话产生相关费用，而无需您的确认。"
+  },
+  {
+    "permission": "android.permission.USE_SIP",
+    "permissionName": "使用网络电话",
+    "permissionDes": "允许应用拨打和接听SIP电话"
+  },
+  {
+    "permission": "android.permission.READ_EXTERNAL_STORAGE",
+    "permissionName": "读取外置存储器",
+    "permissionDes": "允许应用读取SD卡"
+  },
+  {
+    "permission": "android.permission.WRITE_EXTERNAL_STORAGE",
+    "permissionName": "写入外置存储器",
+    "permissionDes": "允许应用写入SD卡"
+  },
+  {
+    "permission": "android.permission.WRITE_MEDIA_STORAGE",
+    "permissionName": "修改/删除内部媒体存储设备的内容",
+    "permissionDes": "允许应用修改内部媒体存储设备的内容。"
+  },
+  {
+    "permission": "android.permission.DISABLE_KEYGUARD",
+    "permissionName": "停用屏幕锁定",
+    "permissionDes": "允许应用停用键锁以及任何关联的密码安全措施。例如，让手机在接听来电时停用键锁，在通话结束后重新启用键锁。"
+  },
+  {
+    "permission": "android.permission.GET_TASKS",
+    "permissionName": "检索正在运行的应用",
+    "permissionDes": "允许应用检索近期运行的和当前正在运行的任务的相关信息。此权限可让该应用了解设备上使用了哪些应用。"
+  },
+  {
+    "permission": "android.permission.INTERACT_ACROSS_USERS",
+    "permissionName": "用户间互动",
+    "permissionDes": "允许应用在设备上跨多个用户执行操作。恶意应用可能会借此破坏用户之间的保护措施。"
+  },
+  {
+    "permission": "android.permission.INTERACT_ACROSS_USERS_FULL",
+    "permissionName": "在用户之间进行互动",
+    "permissionDes": "允许应用在用户之间进行所有可能的互动。"
+  },
+  {
+    "permission": "android.permission.MANAGE_USERS",
+    "permissionName": "管理用户",
+    "permissionDes": "允许应用管理设备上的用户（包括查询、创建和删除用户）"
+  },
+  {
+    "permission": "android.permission.GET_DETAILED_TASKS",
+    "permissionName": "检索正在运行的应用的详细信息",
+    "permissionDes": "允许应用检索当前正在运行和近期运行的任务的详细信息。恶意应用可能会发现有关其他应用的私密信息。"
+  },
+  {
+    "permission": "android.permission.REORDER_TASKS",
+    "permissionName": "对正在运行的应用重新排序",
+    "permissionDes": "允许应用将任务移动到前台和后台。该应用可能不经您的命令自行执行此操作。"
+  },
+  {
+    "permission": "android.permission.REMOVE_TASKS",
+    "permissionName": "停止正在运行的应用",
+    "permissionDes": "允许应用删除任务并终止这些任务的应用。恶意应用可以籍此影响其他应用的行为。"
+  },
+  {
+    "permission": "android.permission.START_ANY_ACTIVITY",
+    "permissionName": "启动任何活动",
+    "permissionDes": "允许应用启动任何活动（不考虑权限保护或导出状态）"
+  },
+  {
+    "permission": "android.permission.RESTART_PACKAGES",
+    "permissionName": "关闭其他应用",
+    "permissionDes": "允许应用结束其他应用的后台进程。此权限可导致其他应用停止运行。"
+  },
+  {
+    "permission": "android.permission.KILL_BACKGROUND_PROCESSES",
+    "permissionName": "关闭其他应用",
+    "permissionDes": "允许应用结束其他应用的后台进程。此权限可导致其他应用停止运行。"
+  },
+  {
+    "permission": "android.permission.SYSTEM_ALERT_WINDOW",
+    "permissionName": "悬浮窗",
+    "permissionDes": "允许应用显示在其他应用上方或屏幕的其他部分。这可能会妨碍您正常地使用应用，且其他应用的显示方式可能会受到影响。"
+  },
+  {
+    "permission": "android.permission.SET_WALLPAPER",
+    "permissionName": "设置壁纸",
+    "permissionDes": "允许应用设置系统壁纸"
+  },
+  {
+    "permission": "android.permission.SET_WALLPAPER_HINTS",
+    "permissionName": "调整您的壁纸大小",
+    "permissionDes": "允许应用设置有关系统壁纸大小的提示"
+  },
+  {
+    "permission": "android.permission.SET_TIME",
+    "permissionName": "设置时间",
+    "permissionDes": "允许应用更改平板电脑的时间"
+  },
+  {
+    "permission": "android.permission.SET_TIME_ZONE",
+    "permissionName": "设置时区",
+    "permissionDes": "允许应用更改手机的时区"
+  },
+  {
+    "permission": "android.permission.EXPAND_STATUS_BAR",
+    "permissionName": "展开/收拢状态栏",
+    "permissionDes": "允许应用展开或收起状态栏"
+  },
+  {
+    "permission": "android.permission.READ_SYNC_SETTINGS",
+    "permissionName": "读取同步设置",
+    "permissionDes": "允许应用读取某个账号的同步设置。例如，此权限可确定“联系人”应用是否与某个账号同步。"
+  },
+  {
+    "permission": "android.permission.WRITE_SYNC_SETTINGS",
+    "permissionName": "启用和停用同步",
+    "permissionDes": "允许应用修改某个账号的同步设置。例如，此权限可用于在“联系人”应用与某个账号之间启用同步。"
+  },
+  {
+    "permission": "android.permission.READ_SYNC_STATS",
+    "permissionName": "读取同步统计信息",
+    "permissionDes": "允许应用读取某个账号的同步统计信息，包括同步活动历史记录和同步数据量。"
+  },
+  {
+    "permission": "android.permission.SET_SCREEN_COMPATIBILITY",
+    "permissionName": "设置屏幕兼容性",
+    "permissionDes": "允许应用控制其他应用的屏幕兼容模式。恶意应用可以籍此影响其他应用的行为。"
+  },
+  {
+    "permission": "android.permission.ACCESS_ALL_EXTERNAL_STORAGE",
+    "permissionName": "访问所有用户的外部存储设备",
+    "permissionDes": "允许应用访问所有用户的外部存储设备"
+  },
+  {
+    "permission": "android.permission.CHANGE_CONFIGURATION",
+    "permissionName": "更改系统显示设置",
+    "permissionDes": "允许该应用更改当前配置，例如语言区域或整体的字体大小。"
+  },
+  {
+    "permission": "android.permission.WRITE_SETTINGS",
+    "permissionName": "修改系统设置",
+    "permissionDes": "允许应用修改系统的设置数据。恶意应用可能会破坏您的系统配置。"
+  },
+  {
+    "permission": "android.permission.WRITE_GSERVICES",
+    "permissionName": "修改Google服务地图",
+    "permissionDes": "允许应用修改Google服务地图。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.FORCE_STOP_PACKAGES",
+    "permissionName": "强行停止其他应用",
+    "permissionDes": "允许应用强行停止其他应用。"
+  },
+  {
+    "permission": "android.permission.RETRIEVE_WINDOW_CONTENT",
+    "permissionName": "检索屏幕内容",
+    "permissionDes": "允许应用检索活动窗口的内容。恶意应用可能会检索整个窗口的内容，并检查其中除密码以外的所有文字。"
+  },
+  {
+    "permission": "android.permission.SET_ANIMATION_SCALE",
+    "permissionName": "修改全局动画速度",
+    "permissionDes": "允许应用随时更改全局动画速度（加快或减慢）。"
+  },
+  {
+    "permission": "android.permission.PERSISTENT_ACTIVITY",
+    "permissionName": "始终运行",
+    "permissionDes": "允许该应用在内存中持续保留其自身的某些组件。这会限制其他应用可用的内存，从而减缓手机运行速度。"
+  },
+  {
+    "permission": "android.permission.GET_PACKAGE_SIZE",
+    "permissionName": "计算应用存储空间",
+    "permissionDes": "允许应用检索其代码、数据和缓存大小"
+  },
+  {
+    "permission": "android.permission.SET_PREFERRED_APPLICATIONS",
+    "permissionName": "设置首选应用",
+    "permissionDes": "允许应用修改您的首选应用。恶意应用可能会在后台更改运行的应用，欺骗您现有的应用，以收集您的私人数据。"
+  },
+  {
+    "permission": "android.permission.RECEIVE_BOOT_COMPLETED",
+    "permissionName": "开机启动",
+    "permissionDes": "允许应用在系统完成引导后立即自动启动。这样可能会延长手机的启动时间，并允许应用始终运行，从而导致手机总体运行速度减慢。"
+  },
+  {
+    "permission": "android.permission.BROADCAST_STICKY",
+    "permissionName": "发送持久广播",
+    "permissionDes": "允许应用发送持久广播消息，此类消息在广播结束后仍会保留。过度使用可能会导致手机使用过多内存，从而降低其速度或稳定性。"
+  },
+  {
+    "permission": "android.permission.MOUNT_UNMOUNT_FILESYSTEMS",
+    "permissionName": "访问USB存储设备的文件系统",
+    "permissionDes": "允许应用装载和卸载可移动存储设备的文件系统"
+  },
+  {
+    "permission": "android.permission.MOUNT_FORMAT_FILESYSTEMS",
+    "permissionName": "清除USB存储设备内容",
+    "permissionDes": "允许应用格式化可移动存储设备"
+  },
+  {
+    "permission": "android.permission.ASEC_ACCESS",
+    "permissionName": "获取有关内部存储设备的信息",
+    "permissionDes": "允许应用获取有关内部存储设备的信息"
+  },
+  {
+    "permission": "android.permission.ASEC_CREATE",
+    "permissionName": "创建内部存储设备",
+    "permissionDes": "允许应用创建内部存储设备"
+  },
+  {
+    "permission": "android.permission.ASEC_DESTROY",
+    "permissionName": "清除内部存储设备",
+    "permissionDes": "允许应用清除内部存储设备"
+  },
+  {
+    "permission": "android.permission.ASEC_MOUNT_UNMOUNT",
+    "permissionName": "装载/卸载内部存储设备",
+    "permissionDes": "允许应用装载/卸载内部存储设备"
+  },
+  {
+    "permission": "android.permission.ASEC_RENAME",
+    "permissionName": "重命名内部存储设备",
+    "permissionDes": "允许应用重命名内部存储设备"
+  },
+  {
+    "permission": "android.permission.WRITE_APN_SETTINGS",
+    "permissionName": "更改/拦截网络设置和流量",
+    "permissionDes": "允许应用更改网络设置，并拦截和检查所有网络流量，例如更改任意 APN 的代理和端口。恶意应用可能会在您不知情的情况下监视、重定向或修改网络数据包。"
+  },
+  {
+    "permission": "android.permission.SUBSCRIBED_FEEDS_READ",
+    "permissionName": "读取订阅的供稿",
+    "permissionDes": "允许应用获取有关当前同步的 Feed 的详情"
+  },
+  {
+    "permission": "android.permission.SUBSCRIBED_FEEDS_WRITE",
+    "permissionName": "写入订阅的供稿",
+    "permissionDes": "允许应用修改您当前同步的 Feed。恶意应用可能会更改您的同步 Feed。"
+  },
+  {
+    "permission": "android.permission.CHANGE_NETWORK_STATE",
+    "permissionName": "更改网络连接性",
+    "permissionDes": "允许应用更改网络连接的状态"
+  },
+  {
+    "permission": "android.permission.CLEAR_APP_CACHE",
+    "permissionName": "删除所有应用缓存数据",
+    "permissionDes": "允许应用删除其他应用的缓存目录中的文件，从而释放平板电脑存储空间。此权限可能会导致其他应用的启动速度变慢，因为应用必须重新检索数据。"
+  },
+  {
+    "permission": "android.permission.ALLOW_ANY_CODEC_FOR_PLAYBACK",
+    "permissionName": "使用任何媒体解码器进行播放",
+    "permissionDes": "允许应用使用任何已安装的媒体解码器进行解码，以便播放媒体。"
+  },
+  {
+    "permission": "android.permission.WRITE_SECURE_SETTINGS",
+    "permissionName": "修改安全系统设置",
+    "permissionDes": "允许应用修改系统的安全设置数据。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.DUMP",
+    "permissionName": "检索系统内部状态",
+    "permissionDes": "允许应用检索系统的内部状态。恶意应用可能会检索一般情况下绝不需要检索的多种私人信息和安全信息。"
+  },
+  {
+    "permission": "android.permission.READ_LOGS",
+    "permissionName": "查阅敏感日志数据",
+    "permissionDes": "允许应用从系统的各种日志文件中读取信息。这样，应用就可以发现关于您平板电脑使用情况的一般信息，其中可能包含个人信息或隐私信息。"
+  },
+  {
+    "permission": "android.permission.SET_DEBUG_APP",
+    "permissionName": "启用应用调试",
+    "permissionDes": "允许应用对其他应用启用调试。恶意应用可以籍此终止其他的应用。"
+  },
+  {
+    "permission": "android.permission.SET_PROCESS_LIMIT",
+    "permissionName": "限制运行的进程数量",
+    "permissionDes": "允许应用控制将运行的进程数上限。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.SET_ALWAYS_FINISH",
+    "permissionName": "强制关闭后台应用",
+    "permissionDes": "允许应用控制活动在转入后台后是否立即结束。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.SIGNAL_PERSISTENT_PROCESSES",
+    "permissionName": "向应用发送 Linux 信号",
+    "permissionDes": "允许应用请求将提供的信号发送给所有持续的进程"
+  },
+  {
+    "permission": "android.permission.DIAGNOSTIC",
+    "permissionName": "读取/写入诊断所拥有的资源",
+    "permissionDes": "允许应用读取/写入诊断组拥有的所有资源（例如 /dev 中的文件）。这可能会影响系统的稳定性和安全性。此权限仅供制造商或运营商诊断硬件方面的问题时使用。"
+  },
+  {
+    "permission": "android.permission.STATUS_BAR",
+    "permissionName": "停用或修改状态栏",
+    "permissionDes": "允许应用停用状态栏或者增删系统图标"
+  },
+  {
+    "permission": "android.permission.STATUS_BAR_SERVICE",
+    "permissionName": "用作状态栏",
+    "permissionDes": "允许应用以状态栏形式显示应用"
+  },
+  {
+    "permission": "android.permission.FORCE_BACK",
+    "permissionName": "强制应用关闭",
+    "permissionDes": "允许应用强制关闭任何前台活动并返回。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.UPDATE_DEVICE_STATS",
+    "permissionName": "修改电池使用统计信息",
+    "permissionDes": "允许应用修改收集到的电池统计信息。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.INTERNAL_SYSTEM_WINDOW",
+    "permissionName": "显示未授权的窗口",
+    "permissionDes": "允许应用创建供内部系统用户界面使用的窗口。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.MANAGE_APP_TOKENS",
+    "permissionName": "管理应用令牌",
+    "permissionDes": "允许应用绕过其正常的 Z 排序创建和管理自己的令牌。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.FREEZE_SCREEN",
+    "permissionName": "冻结屏幕",
+    "permissionDes": "允许应用暂时冻结屏幕进行全屏转换。"
+  },
+  {
+    "permission": "android.permission.INJECT_EVENTS",
+    "permissionName": "按键和控制按钮",
+    "permissionDes": "允许应用将自身的输入活动（例如按键操作等）提供给其他应用。恶意应用可能借此控制平板电脑。"
+  },
+  {
+    "permission": "android.permission.FILTER_EVENTS",
+    "permissionName": "过滤事件",
+    "permissionDes": "允许应用注册输入过滤器，这类过滤器会在所有用户事件分派之前对用户事件流进行过滤。恶意应用可能会在没有用户干预的情况下控制系统用户界面。"
+  },
+  {
+    "permission": "android.permission.RETRIEVE_WINDOW_INFO",
+    "permissionName": "检索窗口信息",
+    "permissionDes": "允许应用通过窗口管理器检索窗口信息。恶意应用可能会检索供内部系统使用的信息。"
+  },
+  {
+    "permission": "android.permission.TEMPORARY_ENABLE_ACCESSIBILITY",
+    "permissionName": "暂时启用无障碍功能",
+    "permissionDes": "允许应用在设备上暂时启用无障碍功能。恶意应用可能会在未经用户同意的情况下擅自启用无障碍功能。"
+  },
+  {
+    "permission": "android.permission.MAGNIFY_DISPLAY",
+    "permissionName": "放大显示内容",
+    "permissionDes": "允许应用放大显示内容。恶意应用可能会以特定方式改变显示内容，使得设备无法使用。"
+  },
+  {
+    "permission": "android.permission.SET_ACTIVITY_WATCHER",
+    "permissionName": "监控所有应用的启动",
+    "permissionDes": "允许应用监视和控制系统是如何启动活动的。恶意应用可能会完全破坏系统。此权限只有在进行开发时才需要，正常使用情况下绝不需要。"
+  },
+  {
+    "permission": "android.permission.SHUTDOWN",
+    "permissionName": "部分关机",
+    "permissionDes": "允许应用使活动管理器进入关闭状态。不执行彻底关机。"
+  },
+  {
+    "permission": "android.permission.STOP_APP_SWITCHES",
+    "permissionName": "禁止切换应用",
+    "permissionDes": "允许应用阻止用户切换到其他应用"
+  },
+  {
+    "permission": "android.permission.READ_INPUT_STATE",
+    "permissionName": "记录您键入的内容和执行的操作",
+    "permissionDes": "允许应用记录您所按的键，包括与其他应用进行交互（如输入密码）时按的键。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_INPUT_METHOD",
+    "permissionName": "绑定至输入法",
+    "permissionDes": "允许应用绑定至输入法的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_ACCESSIBILITY_SERVICE",
+    "permissionName": "辅助模式",
+    "permissionDes": "允许应用绑定至无障碍服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_TEXT_SERVICE",
+    "permissionName": "绑定至文字服务",
+    "permissionDes": "允许应用绑定至文本服务（如 SpellCheckerService）的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_VPN_SERVICE",
+    "permissionName": "绑定到VPN服务",
+    "permissionDes": "允许应用绑定到VPN服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_WALLPAPER",
+    "permissionName": "绑定到壁纸",
+    "permissionDes": "允许应用绑定到壁纸的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_DEVICE_ADMIN",
+    "permissionName": "设备管理器",
+    "permissionDes": "允许应用向设备管理器发送Intent。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.SET_ORIENTATION",
+    "permissionName": "更改屏幕显示方向",
+    "permissionDes": "允许应用随时更改屏幕的旋转状态。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.SET_POINTER_SPEED",
+    "permissionName": "更改指针速度",
+    "permissionDes": "允许应用随时更改鼠标或触控板指针速度。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.SET_KEYBOARD_LAYOUT",
+    "permissionName": "更改键盘布局",
+    "permissionDes": "允许应用更改键盘布局。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.INSTALL_PACKAGES",
+    "permissionName": "直接安装应用",
+    "permissionDes": "允许应用安装新的（或新版本的）Andr​​oid软件包。恶意应用可能借此添加具有任意权限的新应用。"
+  },
+  {
+    "permission": "android.permission.CLEAR_APP_USER_DATA",
+    "permissionName": "删除其他应用的数据",
+    "permissionDes": "允许应用清除用户数据"
+  },
+  {
+    "permission": "android.permission.DELETE_CACHE_FILES",
+    "permissionName": "删除其他应用的缓存",
+    "permissionDes": "允许应用删除缓存文件"
+  },
+  {
+    "permission": "android.permission.DELETE_PACKAGES",
+    "permissionName": "删除应用",
+    "permissionDes": "允许应用删除Android软件包。恶意应用可能借此删除重要的应用。"
+  },
+  {
+    "permission": "android.permission.MOVE_PACKAGE",
+    "permissionName": "移动应用资源",
+    "permissionDes": "允许应用在内部与外部媒体之间移动应用资源"
+  },
+  {
+    "permission": "android.permission.CHANGE_COMPONENT_ENABLED_STATE",
+    "permissionName": "启用或停用应用组件",
+    "permissionDes": "允许应用启用或停用其他应用的组件。恶意应用可能借此停用重要的平板电脑功能。请务必谨慎使用此权限，因为这可能导致某些应用组件处于无法使用、不一致或不稳定的状态。"
+  },
+  {
+    "permission": "android.permission.GRANT_REVOKE_PERMISSIONS",
+    "permissionName": "授予或撤消权限",
+    "permissionDes": "允许应用针对自身或其他应用授予或撤消特定权限。恶意应用可能会借此访问您未授权它们访问的功能。"
+  },
+  {
+    "permission": "android.permission.ACCESS_SURFACE_FLINGER",
+    "permissionName": "访问 SurfaceFlinger",
+    "permissionDes": "允许应用使用 SurfaceFlinger 低级功能"
+  },
+  {
+    "permission": "android.permission.READ_FRAME_BUFFER",
+    "permissionName": "读取帧缓冲区",
+    "permissionDes": "允许应用读取帧缓冲区的内容"
+  },
+  {
+    "permission": "android.permission.CONFIGURE_WIFI_DISPLAY",
+    "permissionName": "配置WLAN显示设备",
+    "permissionDes": "允许应用配置并连接到WLAN显示设备"
+  },
+  {
+    "permission": "android.permission.CONTROL_WIFI_DISPLAY",
+    "permissionName": "控制WLAN显示设备",
+    "permissionDes": "允许应用控制WLAN显示设备的基础功能"
+  },
+  {
+    "permission": "android.permission.BRICK",
+    "permissionName": "永久停用平板电脑",
+    "permissionDes": "允许应用永久停用整个平板电脑，这样做非常危险。"
+  },
+  {
+    "permission": "android.permission.REBOOT",
+    "permissionName": "强行重新启动平板电脑",
+    "permissionDes": "允许应用强行重新启动平板电脑"
+  },
+  {
+    "permission": "android.permission.DEVICE_POWER",
+    "permissionName": "打开或关闭平板电脑",
+    "permissionDes": "允许应用打开或关闭平板电脑"
+  },
+  {
+    "permission": "android.permission.NET_TUNNELING",
+    "permissionName": "允许底层访问tun tap驱动",
+    "permissionDes": "允许底层访问tun tap驱动"
+  },
+  {
+    "permission": "android.permission.FACTORY_TEST",
+    "permissionName": "在出厂测试模式下运行",
+    "permissionDes": "允许应用作为低级别的制造商测试项目运行，这会授予应用对平板电脑硬件的完全访问权限。仅当平板电脑在制造商测试模式下运行时，此选项才可用。"
+  },
+  {
+    "permission": "android.permission.BROADCAST_PACKAGE_REMOVED",
+    "permissionName": "发送软件包被移除的广播",
+    "permissionDes": "允许应用广播一条关于某个软件包已被移除的通知。恶意应用可能借此终止其他正在运行的应用。"
+  },
+  {
+    "permission": "android.permission.BROADCAST_SMS",
+    "permissionName": "发送短信收到的广播",
+    "permissionDes": "允许应用广播一条有关已收到短信的通知。恶意应用可能借此伪造接到的短信。"
+  },
+  {
+    "permission": "android.permission.BROADCAST_WAP_PUSH",
+    "permissionName": "发送 WAP-PUSH 收到的广播",
+    "permissionDes": "允许应用广播一条有关已收到 WAP PUSH 短信的通知。恶意应用可能借此伪造短信接收，或在后台将任意网页的内容替换为恶意内容。"
+  },
+  {
+    "permission": "android.permission.MASTER_CLEAR",
+    "permissionName": "将系统恢复为出厂设置",
+    "permissionDes": "允许应用将系统完全恢复为出厂设置，这会清除所有数据、配置和已安装的应用。"
+  },
+  {
+    "permission": "android.permission.CALL_PRIVILEGED",
+    "permissionName": "直接呼叫任何电话号码",
+    "permissionDes": "允许应用在没有您干预的情况下拨打任何电话号码，包括紧急呼救号码。恶意应用可能会多余以及非法地拨打紧急服务的号码。"
+  },
+  {
+    "permission": "android.permission.PERFORM_CDMA_PROVISIONING",
+    "permissionName": "直接启动 CDMA 平板电脑设置",
+    "permissionDes": "允许应用启动 CDMA 配置。恶意应用可能会无端启动 CDMA 配置。"
+  },
+  {
+    "permission": "android.permission.CONTROL_LOCATION_UPDATES",
+    "permissionName": "控制位置更新通知",
+    "permissionDes": "允许应用启用/停用来自无线装置的位置更新通知。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.ACCESS_CHECKIN_PROPERTIES",
+    "permissionName": "访问检入属性",
+    "permissionDes": "允许应用对登记服务上传的属性拥有读取/写入权限。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.PACKAGE_USAGE_STATS",
+    "permissionName": "读取应用使用情况",
+    "permissionDes": "允许应用修改收集到的组件使用情况统计信息。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.BATTERY_STATS",
+    "permissionName": "读取电池使用统计信息",
+    "permissionDes": "允许应用读取当前电量使用情况的基础数据，此权限可让应用了解关于您使用了哪些应用的详细信息。"
+  },
+  {
+    "permission": "android.permission.BACKUP",
+    "permissionName": "控制系统备份和还原",
+    "permissionDes": "允许应用控制系统的备份和还原机制。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.CONFIRM_FULL_BACKUP",
+    "permissionName": "确认完整备份或恢复操作",
+    "permissionDes": "允许应用启动完整备份确认用户界面。不用于任何应用。"
+  },
+  {
+    "permission": "android.permission.BIND_REMOTEVIEWS",
+    "permissionName": "绑定到小部件服务",
+    "permissionDes": "允许应用绑定到小部件服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_APPWIDGET",
+    "permissionName": "选择小部件",
+    "permissionDes": "允许应用告知系统哪些小部件可供哪个应用使用。拥有此权限的应用可向其他应用授予对个人数据的访问权限。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_KEYGUARD_APPWIDGET",
+    "permissionName": "私有权限，在锁屏界面下弹出对话框",
+    "permissionDes": "允许应用在锁屏界面下弹出对话框（私有权限）"
+  },
+  {
+    "permission": "android.permission.MODIFY_APPWIDGET_BIND_PERMISSIONS",
+    "permissionName": "查询和修改小组件绑定权限",
+    "permissionDes": "允许应用查询和修改小组件绑定权限（内部权限）"
+  },
+  {
+    "permission": "android.permission.CHANGE_BACKGROUND_DATA_SETTING",
+    "permissionName": "更改后台流量设置",
+    "permissionDes": "允许应用更改后台流量设置"
+  },
+  {
+    "permission": "android.permission.GLOBAL_SEARCH",
+    "permissionName": "将内容加入全局搜索",
+    "permissionDes": "允许应用将内容加入全局搜索"
+  },
+  {
+    "permission": "android.permission.GLOBAL_SEARCH_CONTROL",
+    "permissionName": "控制全局搜索",
+    "permissionDes": "允许应用控制全局搜索"
+  },
+  {
+    "permission": "android.permission.SET_WALLPAPER_COMPONENT",
+    "permissionName": "设置活动壁纸",
+    "permissionDes": "允许应用设置活动壁纸"
+  },
+  {
+    "permission": "android.permission.READ_DREAM_STATE",
+    "permissionName": "读取屏保设置和状态",
+    "permissionDes": "允许应用读取屏保设置和状态"
+  },
+  {
+    "permission": "android.permission.WRITE_DREAM_STATE",
+    "permissionName": "更新屏保设置，启动或停止屏保",
+    "permissionDes": "允许应用更新屏保设置，启动或停止屏保"
+  },
+  {
+    "permission": "android.permission.ACCESS_CACHE_FILESYSTEM",
+    "permissionName": "访问缓存文件系统",
+    "permissionDes": "允许应用读取和写入缓存文件系统"
+  },
+  {
+    "permission": "android.permission.COPY_PROTECTED_DATA",
+    "permissionName": "复制内容",
+    "permissionDes": "复制内容"
+  },
+  {
+    "permission": "android.permission.CRYPT_KEEPER",
+    "permissionName": "访问加密方法的内部权限",
+    "permissionDes": "允许应用访问加密方法的内部权限"
+  },
+  {
+    "permission": "android.permission.READ_NETWORK_USAGE_HISTORY",
+    "permissionName": "读取网络使用情况历史记录",
+    "permissionDes": "允许应用读取特定网络和应用的网络使用情况历史记录"
+  },
+  {
+    "permission": "android.permission.MANAGE_NETWORK_POLICY",
+    "permissionName": "管理网络政策",
+    "permissionDes": "允许应用管理网络规范和定义专门针对应用的规则"
+  },
+  {
+    "permission": "android.permission.MODIFY_NETWORK_ACCOUNTING",
+    "permissionName": "修改网络使用情况记录方式",
+    "permissionDes": "允许应用修改对于各应用的网络使用情况的统计方式。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.intent.category.MASTER_CLEAR.permission.C2D_MESSAGE",
+    "permissionName": "接收云到设备的消息",
+    "permissionDes": "允许应用接收云到设备的消息"
+  },
+  {
+    "permission": "android.permission.PACKAGE_VERIFICATION_AGENT",
+    "permissionName": "验证软件包",
+    "permissionDes": "允许应用验证软件包是否可安装。"
+  },
+  {
+    "permission": "android.permission.BIND_PACKAGE_VERIFIER",
+    "permissionName": "绑定到软件包验证程序",
+    "permissionDes": "允许应用申请使用软件包验证程序。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.SERIAL_PORT",
+    "permissionName": "访问串行端口",
+    "permissionDes": "允许应用通过SerialManager API使用串行端口"
+  },
+  {
+    "permission": "android.permission.ACCESS_CONTENT_PROVIDERS_EXTERNALLY",
+    "permissionName": "从外部访问内容提供程序",
+    "permissionDes": "允许应用通过接口访问内容提供程序。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.UPDATE_LOCK",
+    "permissionName": "阻止自动设备更新",
+    "permissionDes": "允许应用向系统提供相关信息，以确定何时适合执行非交互式重启以升级设备。"
+  },
+  {
+    "permission": "android.permission.ACCESS_BLUETOOTH_SHARE",
+    "permissionName": "蓝牙共享管理器",
+    "permissionDes": "允许应用访问蓝牙共享管理器"
+  },
+  {
+    "permission": "com.android.permission.WHITELIST_BLUETOOTH_DEVICE",
+    "permissionName": "蓝牙白名单",
+    "permissionDes": "允许应用访问蓝牙设备白名单"
+  },
+  {
+    "permission": "com.android.permission.HANDOVER_STATUS",
+    "permissionName": "接收 Android Beam 的传输状态",
+    "permissionDes": "允许应用接收Android Beam当前传输内容的相关信息"
+  },
+  {
+    "permission": "com.android.browser.permission.PRELOAD",
+    "permissionName": "预加载",
+    "permissionDes": "允许应用预加载"
+  },
+  {
+    "permission": "com.android.email.permission.READ_ATTACHMENT",
+    "permissionName": "读取附件",
+    "permissionDes": "读取附件"
+  },
+  {
+    "permission": "com.android.email.permission.ACCESS_PROVIDER",
+    "permissionName": "访问Provider",
+    "permissionDes": "访问Provider"
+  },
+  {
+    "permission": "com.android.gallery3d.permission.GALLERY_PROVIDER",
+    "permissionName": "提供图库内容",
+    "permissionDes": "允许应用提供图库内容"
+  },
+  {
+    "permission": "com.android.launcher.permission.PRELOAD_WORKSPACE",
+    "permissionName": "预加载主屏幕工作空间",
+    "permissionDes": "允许应用预加载主屏幕工作空间"
+  },
+  {
+    "permission": "com.android.launcher.permission.INSTALL_SHORTCUT",
+    "permissionName": "安装快捷方式",
+    "permissionDes": "允许应用自行添加主屏幕快捷方式。"
+  },
+  {
+    "permission": "com.android.launcher.permission.UNINSTALL_SHORTCUT",
+    "permissionName": "卸载快捷方式",
+    "permissionDes": "允许应用自行删除主屏幕快捷方式"
+  },
+  {
+    "permission": "com.android.launcher.permission.READ_SETTINGS",
+    "permissionName": "读取配置",
+    "permissionDes": "允许应用读取配置"
+  },
+  {
+    "permission": "com.android.launcher.permission.WRITE_SETTINGS",
+    "permissionName": "修改配置",
+    "permissionDes": "允许应用修改配置"
+  },
+  {
+    "permission": "com.android.voicemail.permission.READ_WRITE_ALL_VOICEMAIL",
+    "permissionName": "读写所有语音邮件",
+    "permissionDes": "读写所有语音邮件"
+  },
+  {
+    "permission": "android.permission.ACCESS_DOWNLOAD_MANAGER",
+    "permissionName": "下载管理器",
+    "permissionDes": "允许应用访问下载管理器"
+  },
+  {
+    "permission": "android.permission.ACCESS_DOWNLOAD_MANAGER_ADVANCED",
+    "permissionName": "下载管理器高级",
+    "permissionDes": "允许应用访问下载管理器高级"
+  },
+  {
+    "permission": "android.permission.SEND_DOWNLOAD_COMPLETED_INTENTS",
+    "permissionName": "下载完成",
+    "permissionDes": "允许应用发送下载完成的Intent"
+  },
+  {
+    "permission": "android.permission.DOWNLOAD_CACHE_NON_PURGEABLE",
+    "permissionName": "不可清除的下载缓存",
+    "permissionDes": "允许应用设置不可清除的下载缓存"
+  },
+  {
+    "permission": "android.permission.DOWNLOAD_WITHOUT_NOTIFICATION",
+    "permissionName": "无通知下载",
+    "permissionDes": "允许应用无通知下载"
+  },
+  {
+    "permission": "android.permission.ACCESS_ALL_DOWNLOADS",
+    "permissionName": "访问所有下载",
+    "permissionDes": "允许应用访问所有下载"
+  },
+  {
+    "permission": "android.permission.ACCESS_DRM",
+    "permissionName": "访问DRM",
+    "permissionDes": "允许应用访问DRM"
+  },
+  {
+    "permission": "android.permission.INSTALL_DRM",
+    "permissionName": "安装DRM",
+    "permissionDes": "允许应用安装DRM"
+  },
+  {
+    "permission": "android.permission.SEND_RESPOND_VIA_MESSAGE",
+    "permissionName": "发送“通过信息回复”事件",
+    "permissionDes": "允许应用向其他信息应用发送请求，以便处理来电的“通过信息回复”事件。"
+  },
+  {
+    "permission": "android.permission.LOCATION_HARDWARE",
+    "permissionName": "定位硬件",
+    "permissionDes": "允许应用定位硬件"
+  },
+  {
+    "permission": "android.permission.LOOP_RADIO",
+    "permissionName": "访问网络环路设备",
+    "permissionDes": "允许应用访问网络环路设备"
+  },
+  {
+    "permission": "android.permission.CAMERA_DISABLE_TRANSMIT_LED",
+    "permissionName": "在相机使用过程中停用传输指示灯 LED",
+    "permissionDes": "允许预装的系统应用禁止相机使用指示灯 LED"
+  },
+  {
+    "permission": "android.permission.GET_APP_OPS_STATS",
+    "permissionName": "检索应用操作统计信息",
+    "permissionDes": "允许应用检索收集到的应用操作统计信息。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.UPDATE_APP_OPS_STATS",
+    "permissionName": "修改应用操作统计信息",
+    "permissionDes": "允许应用修改收集到的应用操作统计信息。普通应用不应使用此权限。"
+  },
+  {
+    "permission": "android.permission.GET_TOP_ACTIVITY_INFO",
+    "permissionName": "获取当前应用的信息",
+    "permissionDes": "允许应用检索目前在屏幕前台运行的应用专有的信息。"
+  },
+  {
+    "permission": "android.permission.ACCESS_NOTIFICATIONS",
+    "permissionName": "访问通知",
+    "permissionDes": "允许应用检索、检查并清除通知，包括其他应用发布的通知。"
+  },
+  {
+    "permission": "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+    "permissionName": "监听通知栏",
+    "permissionDes": "允许应用绑定到通知侦听器服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BLUETOOTH_PRIVILEGED",
+    "permissionName": "进行蓝牙配对",
+    "permissionDes": "允许应用自行与远程设备配对"
+  },
+  {
+    "permission": "android.permission.TRANSMIT_IR",
+    "permissionName": "发射红外线",
+    "permissionDes": "允许应用使用手机的红外线发射器"
+  },
+  {
+    "permission": "android.permission.BIND_CALL_SERVICE",
+    "permissionName": "与通话屏幕互动",
+    "permissionDes": "允许应用控制用户看到通话屏幕的时机和方式"
+  },
+  {
+    "permission": "android.permission.MANAGE_DOCUMENTS",
+    "permissionName": "管理文档存储空间",
+    "permissionDes": "允许应用管理文档存储空间"
+  },
+  {
+    "permission": "android.permission.MANAGE_ACTIVITY_STACKS",
+    "permissionName": "管理活动栈",
+    "permissionDes": "允许应用添加、删除和修改其他应用的运行活动栈。恶意应用可以籍此影响其他应用的行为。"
+  },
+  {
+    "permission": "android.permission.MANAGE_CA_CERTIFICATES",
+    "permissionName": "管理信任的凭据",
+    "permissionDes": "允许应用安装和卸载CA证书（作为信任的凭据）"
+  },
+  {
+    "permission": "android.permission.BIND_PRINT_SERVICE",
+    "permissionName": "绑定至打印服务",
+    "permissionDes": "允许应用绑定至打印服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_NFC_SERVICE",
+    "permissionName": "绑定到NFC服务",
+    "permissionDes": "允许应用绑定到模拟NFC卡的应用。普通应用绝不需要此权限"
+  },
+  {
+    "permission": "android.permission.BIND_PRINT_SPOOLER_SERVICE",
+    "permissionName": "绑定至打印处理服务",
+    "permissionDes": "允许应用绑定至打印处理服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_REMOTE_DISPLAY",
+    "permissionName": "绑定至远程显示屏",
+    "permissionDes": "允许应用绑定至远程显示屏的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.MANAGE_DEVICE_ADMINS",
+    "permissionName": "添加或删除设备管理员",
+    "permissionDes": "允许应用添加或删除有效的设备管理员。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.CAPTURE_AUDIO_OUTPUT",
+    "permissionName": "捕获音频输出",
+    "permissionDes": "允许应用捕获和重定向音频输出"
+  },
+  {
+    "permission": "android.permission.CAPTURE_AUDIO_HOTWORD",
+    "permissionName": "启动指令检测",
+    "permissionDes": "允许应用捕获音频以便检测语音启动指令。捕获操作会在后台进行，但不会妨碍其他音频捕获工具（例如摄像机）。"
+  },
+  {
+    "permission": "android.permission.CAPTURE_VIDEO_OUTPUT",
+    "permissionName": "捕获视频输出",
+    "permissionDes": "允许应用捕获和重定向视频输出"
+  },
+  {
+    "permission": "android.permission.CAPTURE_SECURE_VIDEO_OUTPUT",
+    "permissionName": "捕获安全视频输出",
+    "permissionDes": "允许应用捕获和重定向安全视频输出"
+  },
+  {
+    "permission": "android.permission.MEDIA_CONTENT_CONTROL",
+    "permissionName": "控制媒体播放和使用元数据",
+    "permissionDes": "允许应用控制媒体播放及使用媒体信息（标题、作者…）"
+  },
+  {
+    "permission": "android.permission.MARK_NETWORK_SOCKET",
+    "permissionName": "修改套接字标记",
+    "permissionDes": "允许应用修改用于路由的套接字标记"
+  },
+  {
+    "permission": "android.permission.ACCESS_KEYGUARD_SECURE_STORAGE",
+    "permissionName": "访问锁屏安全存储空间",
+    "permissionDes": "允许应用访问密钥保护安全存储空间。"
+  },
+  {
+    "permission": "android.permission.CONTROL_KEYGUARD",
+    "permissionName": "控制锁屏界面的显示和隐藏状态",
+    "permissionDes": "允许应用控制锁屏"
+  },
+  {
+    "permission": "android.permission.INVOKE_CARRIER_SETUP",
+    "permissionName": "调用运营商提供的配置应用",
+    "permissionDes": "允许应用调用运营商提供的配置应用。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.ACCESS_NETWORK_CONDITIONS",
+    "permissionName": "监听网络状况的观测信息",
+    "permissionDes": "允许应用监听网络状况的观测信息。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "com.android.launcher3.permission.PRELOAD_WORKSPACE",
+    "permissionName": "预加载主屏幕工作空间",
+    "permissionDes": "允许应用预加载主屏幕工作空间"
+  },
+  {
+    "permission": "com.android.launcher3.permission.READ_SETTINGS",
+    "permissionName": "读取配置",
+    "permissionDes": "允许应用读取配置"
+  },
+  {
+    "permission": "com.android.launcher3.permission.WRITE_SETTINGS",
+    "permissionName": "修改配置",
+    "permissionDes": "允许应用修改配置"
+  },
+  {
+    "permission": "com.android.launcher3.permission.RECEIVE_LAUNCH_BROADCASTS",
+    "permissionName": "接收主屏幕启动广播",
+    "permissionDes": "允许应用接收主屏幕启动广播"
+  },
+  {
+    "permission": "android.permission.MMS_SEND_OUTBOX_MSG",
+    "permissionName": "发件箱",
+    "permissionDes": "发件箱"
+  },
+  {
+    "permission": "android.permission.RECEIVE_BLUETOOTH_MAP",
+    "permissionName": "接收蓝牙信息(MAP)",
+    "permissionDes": "允许应用接收和处理蓝牙MAP信息。这意味着，该应用可能会监视发送或到您设备的信息，在您阅读发送到您设备的信息之前擅自删除信息。"
+  },
+  {
+    "permission": "android.permission.BODY_SENSORS",
+    "permissionName": "获取身体传感器信息",
+    "permissionDes": "允许应用存取监测您身体状况的传感器所收集的数据，例如您的心率。"
+  },
+  {
+    "permission": "com.android.voicemail.permission.WRITE_VOICEMAIL",
+    "permissionName": "写入语音邮件",
+    "permissionDes": "允许应用修改和移除您语音信箱中的语音邮件"
+  },
+  {
+    "permission": "com.android.voicemail.permission.READ_VOICEMAIL",
+    "permissionName": "读取语音邮件",
+    "permissionDes": "允许应用读取您的语音邮件"
+  },
+  {
+    "permission": "android.permission.HDMI_CEC",
+    "permissionName": "使用HDMI-CEC控制服务",
+    "permissionDes": "允许应用使用HDMI-CEC控制服务"
+  },
+  {
+    "permission": "android.permission.READ_WIFI_CREDENTIAL",
+    "permissionName": "读取Wifi密码",
+    "permissionDes": "允许应用读取Wifi密码"
+  },
+  {
+    "permission": "android.permission.SCORE_NETWORKS",
+    "permissionName": "为网络评分",
+    "permissionDes": "允许应用为网络评分，并控制平板电脑应优先使用的网络。"
+  },
+  {
+    "permission": "android.permission.BLUETOOTH_MAP",
+    "permissionName": "访问蓝牙MAP数据",
+    "permissionDes": "允许应用访问蓝牙MAP数据"
+  },
+  {
+    "permission": "android.permission.NFC_HANDOVER_STATUS",
+    "permissionName": "接收 Android Beam 的传输状态",
+    "permissionDes": "允许应用接收Android Beam当前传输内容的相关信息"
+  },
+  {
+    "permission": "android.permission.TV_INPUT_HARDWARE",
+    "permissionName": "作为TV输入设备",
+    "permissionDes": "允许应用作为TV输入设备"
+  },
+  {
+    "permission": "android.permission.CAPTURE_TV_INPUT",
+    "permissionName": "捕获TV输入",
+    "permissionDes": "允许应用捕获TV输入"
+  },
+  {
+    "permission": "android.permission.OEM_UNLOCK_STATE",
+    "permissionName": "获取OEM解锁状态",
+    "permissionDes": "允许应用获取OEM解锁状态"
+  },
+  {
+    "permission": "android.permission.READ_PRECISE_PHONE_STATE",
+    "permissionName": "读取确切的手机状态",
+    "permissionDes": "允许应用获取确切的手机状态。此权限可让应用确定实际通话状态、通话是在界面上进行还是在后台进行、通话未接通情况、确切的数据网络连接状态，以及数据网络连接失败情况。"
+  },
+  {
+    "permission": "android.permission.BIND_INCALL_SERVICE",
+    "permissionName": "与通话屏幕互动",
+    "permissionDes": "允许应用控制用户看到通话屏幕的时机和方式"
+  },
+  {
+    "permission": "android.permission.BIND_CONNECTION_SERVICE",
+    "permissionName": "与电话服务交互",
+    "permissionDes": "允许应用与电话服务交互以便接打电话"
+  },
+  {
+    "permission": "android.permission.CONTROL_INCALL_EXPERIENCE",
+    "permissionName": "向用户提供通话体验",
+    "permissionDes": "允许应用向用户提供通话体验"
+  },
+  {
+    "permission": "android.permission.REAL_GET_TASKS",
+    "permissionName": "检索正在运行的应用",
+    "permissionDes": "允许应用检索近期运行的和当前正在运行的任务的相关信息。此权限可让该应用了解设备上使用了哪些应用。"
+  },
+  {
+    "permission": "android.permission.START_TASKS_FROM_RECENTS",
+    "permissionName": "从“最近”发起任务",
+    "permissionDes": "允许应用使用ActivityManager.RecentTaskInfo对象发起从ActivityManager.getRecentTaskList()返回的无效任务"
+  },
+  {
+    "permission": "android.permission.RECOVERY",
+    "permissionName": "与更新和恢复系统互动",
+    "permissionDes": "允许应用与恢复系统和系统更新互动"
+  },
+  {
+    "permission": "android.permission.BIND_JOB_SERVICE",
+    "permissionName": "运行应用的排定后台工作",
+    "permissionDes": "允许应用被Android系统在收到请求后在后台运行"
+  },
+  {
+    "permission": "android.permission.RETRIEVE_WINDOW_TOKEN",
+    "permissionName": "检索窗口令牌",
+    "permissionDes": "允许应用检索窗口令牌。恶意软件可能会借此在未经授权的情况下冒充系统与应用窗口进行互动。"
+  },
+  {
+    "permission": "android.permission.FRAME_STATS",
+    "permissionName": "检索框架统计信息",
+    "permissionDes": "允许应用收集框架统计信息。恶意应用可能会借此监测其他应用的窗口框架统计信息。"
+  },
+  {
+    "permission": "android.permission.BIND_VOICE_INTERACTION",
+    "permissionName": "绑定到语音互动器",
+    "permissionDes": "允许应用绑定到语音互动服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.MANAGE_VOICE_KEYPHRASES",
+    "permissionName": "管理语音关键短语",
+    "permissionDes": "允许应用管理用于语音启动指令检测的关键短语。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_TV_INPUT",
+    "permissionName": "绑定至电视输入设备",
+    "permissionDes": "允许应用绑定至电视输入设备的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.MODIFY_PARENTAL_CONTROLS",
+    "permissionName": "修改家长控制",
+    "permissionDes": "允许应用修改系统的家长控制数据。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.SET_INPUT_CALIBRATION",
+    "permissionName": "更改输入设备校准设置",
+    "permissionDes": "允许应用修改触摸屏的校准参数。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.ACCESS_INPUT_FLINGER",
+    "permissionName": "使用 InputFlinger",
+    "permissionDes": "允许应用使用 InputFlinger 底层功能"
+  },
+  {
+    "permission": "android.permission.MODIFY_AUDIO_ROUTING",
+    "permissionName": "音频转接",
+    "permissionDes": "允许应用直接控制音频转接以及覆盖音频规范决策。"
+  },
+  {
+    "permission": "android.permission.USER_ACTIVITY",
+    "permissionName": "重置显示屏超时",
+    "permissionDes": "允许应用重置显示屏超时"
+  },
+  {
+    "permission": "android.permission.BROADCAST_SCORE_NETWORKS",
+    "permissionName": "广播网络评分",
+    "permissionDes": "允许应用广播网络评分"
+  },
+  {
+    "permission": "android.permission.READ_SEARCH_INDEXABLES",
+    "permissionName": "读取可索引的数据",
+    "permissionDes": "允许应用读取可索引的数据（内部权限）"
+  },
+  {
+    "permission": "android.permission.TRUST_LISTENER",
+    "permissionName": "检测信任状态的变化。",
+    "permissionDes": "允许应用检测信任状态的变化"
+  },
+  {
+    "permission": "android.permission.PROVIDE_TRUST_AGENT",
+    "permissionName": "提供信任的代理。",
+    "permissionDes": "允许应用提供信任的代理"
+  },
+  {
+    "permission": "android.permission.LAUNCH_TRUST_AGENT_SETTINGS",
+    "permissionName": "启动信任的代理设置菜单。",
+    "permissionDes": "允许应用启动可变更信任的代理行为的活动。"
+  },
+  {
+    "permission": "android.permission.BIND_TRUST_AGENT",
+    "permissionName": "绑定至信任的代理服务",
+    "permissionDes": "允许应用绑定至信任的代理服务"
+  },
+  {
+    "permission": "android.permission.BIND_CONDITION_PROVIDER_SERVICE",
+    "permissionName": "绑定到条件提供程序服务",
+    "permissionDes": "允许应用绑定到条件提供程序服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.BIND_DREAM_SERVICE",
+    "permissionName": "绑定到互动屏保服务",
+    "permissionDes": "允许应用绑定到互动屏保服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.ACCESS_DRM_CERTIFICATES",
+    "permissionName": "访问DRM证书",
+    "permissionDes": "允许应用配置和使用DRM证书。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.MANAGE_MEDIA_PROJECTION",
+    "permissionName": "管理媒体投影会话",
+    "permissionDes": "允许应用管理媒体投影会话。这些会话可让应用截取显示内容和音频内容。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.READ_INSTALL_SESSIONS",
+    "permissionName": "读取安装会话",
+    "permissionDes": "允许应用读取安装会话。这样，应用将可以查看有关当前软件包安装的详情。"
+  },
+  {
+    "permission": "android.permission.REMOVE_DRM_CERTIFICATES",
+    "permissionName": "移除DRM证书",
+    "permissionDes": "允许应用移除DRM证书。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "org.chromium.chrome.shell.permission.SANDBOX",
+    "permissionName": "使用Chrome沙盒",
+    "permissionDes": "允许应用使用Chrome沙盒"
+  },
+  {
+    "permission": "org.chromium.chrome.shell.permission.C2D_MESSAGE",
+    "permissionName": "接收云到设备的消息",
+    "permissionDes": "允许应用接收云到设备的消息"
+  },
+  {
+    "permission": "com.android.launcher3.permission.RECEIVE_FIRST_LOAD_BROADCAST",
+    "permissionName": "接收主屏幕首次加载广播",
+    "permissionDes": "允许应用接收主屏幕首次加载广播"
+  },
+  {
+    "permission": "com.android.providers.tv.permission.READ_EPG_DATA",
+    "permissionName": "读取EPG数据",
+    "permissionDes": "允许应用读取EPG数据"
+  },
+  {
+    "permission": "com.android.providers.tv.permission.WRITE_EPG_DATA",
+    "permissionName": "写EPG数据",
+    "permissionDes": "允许应用更新EPG数据"
+  },
+  {
+    "permission": "com.android.providers.tv.permission.ACCESS_ALL_EPG_DATA",
+    "permissionName": "访问所有EPG数据",
+    "permissionDes": "允许应用访问所有EPG数据"
+  },
+  {
+    "permission": "com.android.providers.tv.permission.ACCESS_WATCHED_PROGRAMS",
+    "permissionName": "访问监控程序",
+    "permissionDes": "允许应用访问监控程序"
+  },
+  {
+    "permission": "android.permission.CARRIER_FILTER_SMS",
+    "permissionName": "过滤短信，只有系统应用需要使用此权限",
+    "permissionDes": "允许应用过滤短信，只有系统应用需要使用此权限"
+  },
+  {
+    "permission": "android.permission.ACCESS_FM_RADIO",
+    "permissionName": "接收FM电台",
+    "permissionDes": "允许应用接收FM电台以收听节目。"
+  },
+  {
+    "permission": "android.permission.ACCESS_PDB_STATE",
+    "permissionName": "获取PDB状态",
+    "permissionDes": "允许应用访问PDB状态"
+  },
+  {
+    "permission": "android.permission.REGISTER_SIM_SUBSCRIPTION",
+    "permissionName": "注册新的电信 SIM 卡连接",
+    "permissionDes": "允许应用注册新的电信 SIM 卡连接"
+  },
+  {
+    "permission": "android.permission.REGISTER_CALL_PROVIDER",
+    "permissionName": "注册新的电信网络连接",
+    "permissionDes": "允许应用注册新的电信网络连接"
+  },
+  {
+    "permission": "android.permission.REGISTER_CONNECTION_MANAGER",
+    "permissionName": "管理电信网络连接",
+    "permissionDes": "允许应用管理电信网络连接"
+  },
+  {
+    "permission": "android.permission.CONTROL_VPN",
+    "permissionName": "控制 VPN",
+    "permissionDes": "允许应用控制 VPN 的底层功能"
+  },
+  {
+    "permission": "android.permission.BROADCAST_NETWORK_PRIVILEGED",
+    "permissionName": "广播网络优先级",
+    "permissionDes": "允许应用广播网络优先级"
+  },
+  {
+    "permission": "android.permission.BIND_CARRIER_MESSAGING_SERVICE",
+    "permissionName": "绑定到运营商消息传递服务",
+    "permissionDes": "允许应用绑定到运营商消息传递服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "org.chromium.chrome.shell.permission.DEBUG",
+    "permissionName": "在Chome Shell中调试页面",
+    "permissionDes": "允许应用调试chrome shell"
+  },
+  {
+    "permission": "android.permission.ACCESS_IMS_CALL_SERVICE",
+    "permissionName": "使用即时通讯通话服务",
+    "permissionDes": "允许应用自行使用即时通讯服务拨打电话"
+  },
+  {
+    "permission": "android.permission.USE_FINGERPRINT",
+    "permissionName": "使用指纹硬件",
+    "permissionDes": "允许应用使用指纹硬件进行身份验证"
+  },
+  {
+    "permission": "android.permission.RECEIVE_WIFI_CREDENTIAL_CHANGE",
+    "permissionName": "接收Wifi密码变更通知",
+    "permissionDes": "允许系统应用接收Wifi密码变更通知"
+  },
+  {
+    "permission": "android.permission.OVERRIDE_WIFI_CONFIG",
+    "permissionName": "应用修改Wifi配置",
+    "permissionDes": "允许应用修改任何Wifi配置，即使该配置由另一个应用生成。一旦修改更新，则原创建者无法再修改该配置。"
+  },
+  {
+    "permission": "android.permission.PACKET_KEEPALIVE_OFFLOAD",
+    "permissionName": "使用底层通讯数据包的Offload能力",
+    "permissionDes": "允许系统应用使用底层通讯数据包的Offload能力"
+  },
+  {
+    "permission": "android.permission.DVB_DEVICE",
+    "permissionName": "访问DVB设备",
+    "permissionDes": "允许应用访问DVB设备"
+  },
+  {
+    "permission": "android.permission.NOTIFY_PENDING_SYSTEM_UPDATE",
+    "permissionName": "通知挂起的系统更新",
+    "permissionDes": "允许应用通知挂起的系统更新"
+  },
+  {
+    "permission": "android.permission.CAMERA_SEND_SYSTEM_EVENTS",
+    "permissionName": "向相机服务发送系统事件相关的通知",
+    "permissionDes": "允许应用向相机服务发送系统事件相关的通知"
+  },
+  {
+    "permission": "android.permission.BIND_TELECOM_CONNECTION_SERVICE",
+    "permissionName": "绑定通讯服务",
+    "permissionDes": "允许应用绑定通讯服务。只能被ConnectionService申请以确保只有系统才能绑定该服务"
+  },
+  {
+    "permission": "android.permission.RECEIVE_STK_COMMANDS",
+    "permissionName": "接收接收STK相关指令",
+    "permissionDes": "允许应用接收接收STK相关指令"
+  },
+  {
+    "permission": "android.permission.MANAGE_PROFILE_AND_DEVICE_OWNERS",
+    "permissionName": "管理个人资料和设备所有者",
+    "permissionDes": "允许应用设置个人资料所有者和设备所有者"
+  },
+  {
+    "permission": "android.permission.GET_PACKAGE_IMPORTANCE",
+    "permissionName": "获取包重要性",
+    "permissionDes": "允许应用获取包重要性"
+  },
+  {
+    "permission": "android.permission.UPDATE_CONFIG",
+    "permissionName": "发起配置更新",
+    "permissionDes": "允许应用发起配置更新。请求此权限的应用在将任何更新传递给不同的安装组件之前有责任检查其来源和完整性。"
+  },
+  {
+    "permission": "android.permission.GET_ACCOUNTS_PRIVILEGED",
+    "permissionName": "访问Accounts Service中的账户列表",
+    "permissionDes": "允许应用访问Accounts Service中的账户列表"
+  },
+  {
+    "permission": "android.permission.BIND_MIDI_DEVICE_SERVICE",
+    "permissionName": "绑定Midi设备服务",
+    "permissionDes": "允许应用绑定Midi设备服务，必须由系统的android.media.midi.MidiDeviceService申请（私有权限）。"
+  },
+  {
+    "permission": "android.permission.BIND_ROUTE_PROVIDER",
+    "permissionName": "绑定媒体路由服务",
+    "permissionDes": "允许应用绑定媒体路由服务"
+  },
+  {
+    "permission": "android.permission.TABLET_MODE_LISTENER",
+    "permissionName": "查询平板模式状态并监控其变化",
+    "permissionDes": "允许应用监听平板模式"
+  },
+  {
+    "permission": "android.permission.REQUEST_INSTALL_PACKAGES",
+    "permissionName": "请求安装文件包",
+    "permissionDes": "允许应用请求安装文件包"
+  },
+  {
+    "permission": "android.permission.GRANT_RUNTIME_PERMISSIONS",
+    "permissionName": "授予特定权限",
+    "permissionDes": "允许应用授予特定权限"
+  },
+  {
+    "permission": "android.permission.INSTALL_GRANT_RUNTIME_PERMISSIONS",
+    "permissionName": "请求特定的运行时权限并在安装应用时授权",
+    "permissionDes": "允许应用在安装时授予特定权限"
+  },
+  {
+    "permission": "android.permission.REVOKE_RUNTIME_PERMISSIONS",
+    "permissionName": "取消特定权限",
+    "permissionDes": "允许应用取消特定权限"
+  },
+  {
+    "permission": "android.permission.OBSERVE_GRANT_REVOKE_PERMISSIONS",
+    "permissionName": "监控授权变化",
+    "permissionDes": "允许应用监控授权变化"
+  },
+  {
+    "permission": "android.permission.CONFIGURE_DISPLAY_COLOR_TRANSFORM",
+    "permissionName": "配置显示颜色转换",
+    "permissionDes": "允许应用配置显示颜色转换"
+  },
+  {
+    "permission": "android.permission.PERFORM_SIM_ACTIVATION",
+    "permissionName": "执行SIM卡激活",
+    "permissionDes": "允许应用执行SIM卡激活"
+  },
+  {
+    "permission": "android.permission.CHANGE_APP_IDLE_STATE",
+    "permissionName": "更改其他应用的空闲状态",
+    "permissionDes": "允许应用更改其他应用的空闲状态。本权限对第三方应用不开放"
+  },
+  {
+    "permission": "android.permission.CHANGE_DEVICE_IDLE_TEMP_WHITELIST",
+    "permissionName": "暂时将一个不活跃的应用程序加入白名单，以访问网络并获得屏幕解锁",
+    "permissionDes": "允许应用暂时将一个不活跃的应用程序加入白名单，以访问网络并获得屏幕解锁。"
+  },
+  {
+    "permission": "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+    "permissionName": "请求忽略电池优化",
+    "permissionDes": "允许应用请求相应的权限，以便忽略针对该应用的电池优化。"
+  },
+  {
+    "permission": "android.permission.INTENT_FILTER_VERIFICATION_AGENT",
+    "permissionName": "IntentFilter验证代理",
+    "permissionDes": "允许应用成为IntentFilter验证代理。应用只有申请了本权限，PackageManager才会信任它去验证IntentFilter。"
+  },
+  {
+    "permission": "android.permission.BIND_INTENT_FILTER_VERIFIER",
+    "permissionName": "绑定IntentFilter验证器",
+    "permissionDes": "允许应用绑定IntentFilter验证器"
+  },
+  {
+    "permission": "android.permission.ACCESS_NOTIFICATION_POLICY",
+    "permissionName": "“勿扰”模式使用权限",
+    "permissionDes": "允许应用读取和写入“勿扰”模式配置"
+  },
+  {
+    "permission": "android.permission.MANAGE_FINGERPRINT",
+    "permissionName": "管理指纹",
+    "permissionDes": "允许应用管理指纹"
+  },
+  {
+    "permission": "android.permission.RESET_FINGERPRINT_LOCKOUT",
+    "permissionName": "重置指纹重试次数",
+    "permissionDes": "允许应用重置指纹重试次数"
+  },
+  {
+    "permission": "android.permission.BIND_CHOOSER_TARGET_SERVICE",
+    "permissionName": "绑定目标选择服务",
+    "permissionDes": "允许应用绑定目标选择服务。只允许系统的android.service.chooser.ChooserTargetService申请。"
+  },
+  {
+    "permission": "android.permission.ACCESS_VOICE_INTERACTION_SERVICE",
+    "permissionName": "访问语音交互服务",
+    "permissionDes": "允许访问语音交互服务"
+  },
+  {
+    "permission": "android.permission.BIND_CARRIER_SERVICES",
+    "permissionName": "绑定到运营商服务",
+    "permissionDes": "允许应用绑定到运营商服务。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.QUERY_DO_NOT_ASK_CREDENTIALS_ON_BOOT",
+    "permissionName": "询问重启后是否需要输入密码",
+    "permissionDes": "允许应用询问重启后是否需要输入密码"
+  },
+  {
+    "permission": "android.permission.KILL_UID",
+    "permissionName": "杀死用户相关进程",
+    "permissionDes": "允许应用杀死同用户相关进程。本权限不对第三方应用开放。"
+  },
+  {
+    "permission": "android.permission.LOCAL_MAC_ADDRESS",
+    "permissionName": "获取本地Wifi和蓝牙的Mac地址",
+    "permissionDes": "允许应用获取本地Wifi和蓝牙的Mac地址"
+  },
+  {
+    "permission": "android.permission.PEERS_MAC_ADDRESS",
+    "permissionName": "获取对端Wifi或蓝牙设备的Mac地址",
+    "permissionDes": "允许应用获取对端Wifi或蓝牙设备的Mac地址"
+  },
+  {
+    "permission": "android.permission.DISPATCH_NFC_MESSAGE",
+    "permissionName": "允许NFC协议栈向应用发布NFC消息",
+    "permissionDes": "允许NFC协议栈向应用发布NFC消息。应用可以通过此权限确认接收的NFC消息来自于NFC协议栈而不是来着于另一个应用的模拟"
+  },
+  {
+    "permission": "android.permission.SEND_CALL_LOG_CHANGE",
+    "permissionName": "广播通话记录变化",
+    "permissionDes": "允许应用广播通话记录变化"
+  },
+  {
+    "permission": "android.permission.READ_TV_LISTINGS",
+    "permissionName": "读取TV列表",
+    "permissionDes": "允许应用读取TV列表"
+  },
+  {
+    "permission": "android.permission.ACCESS_UCE_PRESENCE_SERVICE",
+    "permissionName": "访问UCE-Presence",
+    "permissionDes": "允许应用访问UCE-Presence"
+  },
+  {
+    "permission": "android.permission.ACCESS_UCE_OPTIONS_SERVICE",
+    "permissionName": "访问UCE-OPTIONS",
+    "permissionDes": "允许应用访问UCE-OPTIONS"
+  },
+  {
+    "permission": "android.permission.MODIFY_CELL_BROADCASTS",
+    "permissionName": "修改蜂窝广播",
+    "permissionDes": "允许应用修改蜂窝广播"
+  },
+  {
+    "permission": "android.permission.TETHER_PRIVILEGED",
+    "permissionName": "更新tether状态，运行tether carrier provisioning",
+    "permissionDes": "允许应用更新tether状态，运行tether carrier provisioning"
+  },
+  {
+    "permission": "android.permission.READ_OEM_UNLOCK_STATE",
+    "permissionName": "读取OEM解锁状态",
+    "permissionDes": "允许应用读取OEM解锁状态"
+  },
+  {
+    "permission": "android.permission.BIND_SCREENING_SERVICE",
+    "permissionName": "绑定投屏服务",
+    "permissionDes": "允许应用绑定投屏服务"
+  },
+  {
+    "permission": "android.permission.CACHE_CONTENT",
+    "permissionName": "缓存内容",
+    "permissionDes": "允许应用缓存内容，本权限对第三方应用不可用"
+  },
+  {
+    "permission": "android.permission.CREATE_USERS",
+    "permissionName": "创建、删除用户和获取设备上的用户列表。申请了此权限的应用只能创建受限用户、访客用户、被管理用户、演示用户和临时用户，要创建其他类型的用户，应用需要申请MANAGE_USERS权限。本权限对第三方应用不开放。",
+    "permissionDes": "允许应用创建、删除用户和获取用户列表"
+  },
+  {
+    "permission": "android.permission.GET_PROCESS_STATE_AND_OOM_SCORE",
+    "permissionName": "查询进程状态和当前OOM调整得分",
+    "permissionDes": "允许应用查询进程状态和当前OOM调整得分"
+  },
+  {
+    "permission": "android.permission.GET_INTENT_SENDER_INTENT",
+    "permissionName": "调用PendingIntent.getIntent()",
+    "permissionDes": "允许应用调用PendingIntent.getIntent()"
+  },
+  {
+    "permission": "android.permission.STORAGE_INTERNAL",
+    "permissionName": "访问内部存储",
+    "permissionDes": "允许应用访问内部存储"
+  },
+  {
+    "permission": "android.permission.RESET_SHORTCUT_MANAGER_THROTTLING",
+    "permissionName": "重置快捷方式管理器的容量",
+    "permissionDes": "允许应用重置快捷方式管理器的容量"
+  },
+  {
+    "permission": "android.permission.GET_PASSWORD",
+    "permissionName": "访问用户密码",
+    "permissionDes": "允许应用但不能保证在添加账户结束时访问用户密码"
+  },
+  {
+    "permission": "android.permission.BIND_QUICK_SETTINGS_TILE",
+    "permissionName": "绑定到第三方快速设置块",
+    "permissionDes": "允许应用程序绑定到第三方快速设置块。只能由系统为TileService申请"
+  },
+  {
+    "permission": "android.permission.MANAGE_APP_OPS_RESTRICTIONS",
+    "permissionName": "更新用户应用程序op限制",
+    "permissionDes": "允许应用更新用户应用程序op限制。本权限对第三方应用不开放"
+  },
+  {
+    "permission": "android.permission.REGISTER_WINDOW_MANAGER_LISTENERS",
+    "permissionName": "注册监听Window管理器事件的监听器",
+    "permissionDes": "允许应用注册监听Window管理器事件的监听器"
+  },
+  {
+    "permission": "android.permission.BIND_PRINT_RECOMMENDATION_SERVICE",
+    "permissionName": "绑定推荐的打印服务",
+    "permissionDes": "允许应用绑定推荐的打印服务，必须由系统的android.printservice.recommendation.RecommendationService申请"
+  },
+  {
+    "permission": "android.permission.BIND_RUNTIME_PERMISSION_PRESENTER_SERVICE",
+    "permissionName": "绑定RuntimePermissionPresenterService",
+    "permissionDes": "允许应用绑定RuntimePermissionPresenterService，必须有系统的RuntimePermissionPresenterService申请"
+  },
+  {
+    "permission": "android.permission.BIND_TV_REMOTE_SERVICE",
+    "permissionName": "绑定TV远程服务",
+    "permissionDes": "允许应用绑定TV远程服务，必须由系统的com.android.media.tv.remoteprovider.TvRemoteProvider申请"
+  },
+  {
+    "permission": "android.permission.TV_VIRTUAL_REMOTE_CONTROLLER",
+    "permissionName": "作为TV虚拟控制器",
+    "permissionDes": "允许应用作为TV虚拟控制器"
+  },
+  {
+    "permission": "android.permission.TABLET_MODE",
+    "permissionName": "查询平板模式状态并监控其变化",
+    "permissionDes": "允许应用使用平板模式"
+  },
+  {
+    "permission": "android.permission.GET_APP_GRANTED_URI_PERMISSIONS",
+    "permissionName": "获取赋予给另一个应用的URI权限",
+    "permissionDes": "允许应用获取赋予给另一个应用的URI权限。本权限对第三方应用不开放"
+  },
+  {
+    "permission": "android.permission.CLEAR_APP_GRANTED_URI_PERMISSIONS",
+    "permissionName": "清除赋予给另一个应用的URI权限",
+    "permissionDes": "允许应用清除赋予给另一个应用的URI权限。本权限对第三方应用不开放"
+  },
+  {
+    "permission": "android.permission.MANAGE_NOTIFICATIONS",
+    "permissionName": "管理通知",
+    "permissionDes": "允许应用修改通知的不干扰规则和策略，只对系统进程开放。"
+  },
+  {
+    "permission": "android.permission.BIND_NOTIFICATION_RANKER_SERVICE",
+    "permissionName": "绑定通知排序服务",
+    "permissionDes": "允许应用绑定到通知排序器服务的顶级接口。普通应用绝不需要此权限。"
+  },
+  {
+    "permission": "android.permission.MODIFY_DAY_NIGHT_MODE",
+    "permissionName": "更新白昼黑夜模式",
+    "permissionDes": "当系统的config_lockDayNightMode标志被设置时，允许应用更新白昼黑夜模式"
+  },
+  {
+    "permission": "android.permission.ACCESS_EPHEMERAL_APPS",
+    "permissionName": "允许访问Ephemeral应用",
+    "permissionDes": "允许应用访问Ephemeral应用"
+  },
+  {
+    "permission": "android.permission.RECEIVE_MEDIA_RESOURCE_USAGE",
+    "permissionName": "接收多媒体资源的使用情况",
+    "permissionDes": "允许应用接收多媒体资源的使用情况"
+  },
+  {
+    "permission": "android.permission.MANAGE_SOUND_TRIGGER",
+    "permissionName": "管理声控触发器",
+    "permissionDes": "允许应用管理声控触发器"
+  },
+  {
+    "permission": "android.permission.DISPATCH_PROVISIONING_MESSAGE",
+    "permissionName": "发送托管开通消息给托管开通应用",
+    "permissionDes": "允许受信任的应用发送托管开通消息给托管开通应用"
+  },
+  {
+    "permission": "android.permission.READ_BLOCKED_NUMBERS",
+    "permissionName": "允许持有者读取被阻塞的号码",
+    "permissionDes": "允许应用持有者读取被阻塞的号码"
+  },
+  {
+    "permission": "android.permission.WRITE_BLOCKED_NUMBERS",
+    "permissionName": "允许持有者更新被阻塞的号码",
+    "permissionDes": "允许应用持有者更新被阻塞的号码"
+  },
+  {
+    "permission": "android.permission.BIND_VR_LISTENER_SERVICE",
+    "permissionName": "绑定VR监听设备",
+    "permissionDes": "允许应用绑定到VR监听器服务的顶级接口"
+  },
+  {
+    "permission": "android.permission.ACCESS_VR_MANAGER",
+    "permissionName": "访问VR管理器",
+    "permissionDes": "允许应用访问VR管理器"
+  },
+  {
+    "permission": "android.permission.UPDATE_LOCK_TASK_PACKAGES",
+    "permissionName": "在锁定任务模式下将任务加入白名单",
+    "permissionDes": "允许应用在锁定任务模式下将任务加入白名单。本权限对第三方应用不开放。"
+  },
+  {
+    "permission": "android.permission.SUBSTITUTE_NOTIFICATION_APP_NAME",
+    "permissionName": "替换通知中的应用名称",
+    "permissionDes": "允许应用替换通知中的应用名称"
+  },
+  {
+    "permission": "com.android.tv.permission.RECEIVE_INPUT_EVENT",
+    "permissionName": "接收输入事件",
+    "permissionDes": "允许应用接收输入事件"
+  },
+  {
+    "permission": "android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS",
+    "permissionName": "使用受限网络",
+    "permissionDes": "允许应用使用受限网络"
+  },
+  {
+    "permission": "android.permission.CONFIGURE_DISPLAY_COLOR_MODE",
+    "permissionName": "配置显示颜色模式",
+    "permissionDes": "允许应用配置显示颜色模式"
+  },
+  {
+    "permission": "com.android.rcs.eab.permission.READ_WRITE_EAB",
+    "permissionName": "读写EAB",
+    "permissionDes": "允许应用读写EAB"
+  },
+  {
+    "permission": "android.permission.ACCESS_INSTANT_APPS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ALLOCATE_AGGRESSIVE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ANSWER_PHONE_CALLS",
+    "permissionName": "接听电话",
+    "permissionDes": "授权应用可以接听来电。"
+  },
+  {
+    "permission": "android.permission.BIND_AUTOFILL",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_AUTOFILL_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_CACHE_QUOTA_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_COMPANION_DEVICE_MANAGER_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_IMS_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_NETWORK_RECOMMENDATION_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_NOTIFICATION_ASSISTANT_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_RESOLVER_RANKER_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_VISUAL_VOICEMAIL_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.CHANGE_ACCESSIBILITY_VOLUME",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.CHANGE_OVERLAY_PACKAGES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.HIDE_NON_SYSTEM_OVERLAY_WINDOWS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.INSTANT_APP_FOREGROUND_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_AUTO_FILL",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_CARRIER_OEM_UNLOCK_STATE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_OWN_CALLS",
+    "permissionName": "电话通话状态",
+    "permissionDes": "允许应用管理自己的电话通话状态，比如接听、拒绝电话等。这通常用于VoIP应用或者其他需要管理电话状态的应用。"
+  },
+  {
+    "permission": "android.permission.MANAGE_USER_OEM_UNLOCK_STATE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MODIFY_ACCESSIBILITY_DATA",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MODIFY_THEME_OVERLAY",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.NETWORK_SETTINGS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.NETWORK_STACK",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.NOTIFICATION_DURING_SETUP",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.NOTIFY_TV_INPUTS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.PROVIDE_RESOLVER_RANKER_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.READ_PHONE_NUMBERS",
+    "permissionName": "读取本机电话号码",
+    "permissionDes": "Allows the app to access the phone numbers of the device."
+  },
+  {
+    "permission": "android.permission.REQUEST_COMPANION_RUN_IN_BACKGROUND",
+    "permissionName": "辅助物品后台运行",
+    "permissionDes": "允许应用请求有关辅助物品（如辅助眼镜或耳机）在后台运行的权限。"
+  },
+  {
+    "permission": "android.permission.REQUEST_COMPANION_USE_DATA_IN_BACKGROUND",
+    "permissionName": "后台使用用户数据",
+    "permissionDes": "This app can use data in the background. This may increase data usage."
+  },
+  {
+    "permission": "android.permission.REQUEST_DELETE_PACKAGES",
+    "permissionName": "删除其他应用",
+    "permissionDes": "Allows an application to request deletion of packages."
+  },
+  {
+    "permission": "android.permission.REQUEST_NETWORK_SCORES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.RESTRICTED_VR_ACCESS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.RUN_IN_BACKGROUND",
+    "permissionName": "后台运行",
+    "permissionDes": "This app can run in the background. This may drain battery faster."
+  },
+  {
+    "permission": "android.permission.SET_DISPLAY_OFFSET",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.SET_MEDIA_KEY_LISTENER",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.SET_VOLUME_KEY_LONG_PRESS_LISTENER",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.USE_DATA_IN_BACKGROUND",
+    "permissionName": "在后台使用数据",
+    "permissionDes": "This app can use data in the background. This may increase data usage."
+  },
+  {
+    "permission": "android.permission.VIEW_INSTANT_APPS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ACCESS_BROADCAST_RADIO",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ACCESS_LOWPAN_STATE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ACCESS_VR_STATE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ACTIVITY_EMBEDDING",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.CHANGE_HDMI_CEC_ACTIVE_SOURCE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.CHANGE_LOWPAN_STATE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.DISABLE_INPUT_DEVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_LOWPAN_INTERFACES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_SUBSCRIPTION_PLANS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.READ_CONTENT_RATING_SYSTEMS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.READ_LOWPAN_CREDENTIAL",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.READ_PRINT_SERVICES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.READ_PRINT_SERVICE_RECOMMENDATIONS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.READ_WALLPAPER_INTERNAL",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.SEND_EMBMS_INTENTS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.TRIGGER_TIME_ZONE_RULES_CHECK",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.UPDATE_TIME_ZONE_RULES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.USE_COLORIZED_NOTIFICATIONS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "com.android.permission.BIND_EUICC_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "com.android.permission.WRITE_EMBEDDED_SUBSCRIPTIONS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ACCEPT_HANDOVER",
+    "permissionName": "继续进行来自其他app的通话",
+    "permissionDes": "Allows the app to continue a call which was started in another app."
+  },
+  {
+    "permission": "android.permission.ACCESS_AMBIENT_LIGHT_STATS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ACCESS_SHORTCUTS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_AUTOFILL_FIELD_CLASSIFICATION_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_EUICC_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_SETTINGS_SUGGESTIONS_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_SOUND_TRIGGER_DETECTION_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_TELEPHONY_DATA_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_TELEPHONY_NETWORK_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BIND_TEXTCLASSIFIER_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.BRIGHTNESS_SLIDER_USAGE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.CONFIGURE_DISPLAY_BRIGHTNESS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.CONTROL_DISPLAY_BRIGHTNESS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.CONTROL_DISPLAY_SATURATION",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.CONTROL_REMOTE_APP_TRANSITION_ANIMATIONS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.DISABLE_HIDDEN_API_CHECKS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.FORCE_PERSISTABLE_URI_PERMISSIONS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.FOREGROUND_SERVICE",
+    "permissionName": "前台服务",
+    "permissionDes": "Allows the app to make use of foreground services."
+  },
+  {
+    "permission": "android.permission.INSTALL_PACKAGE_UPDATES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.INSTALL_SELF_UPDATES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.INTERNAL_DELETE_CACHE_FILES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_APP_OPS_MODES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_AUDIO_POLICY",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_BIND_INSTANT_SERVICE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_BLUETOOTH_WHEN_PERMISSION_REVIEW_REQUIRED",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_CAMERA",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_IPSEC_TUNNELS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_SCOPED_ACCESS_DIRECTORY_PERMISSIONS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_SENSORS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_SLICE_PERMISSIONS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MANAGE_WIFI_WHEN_PERMISSION_REVIEW_REQUIRED",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.MODIFY_QUIET_MODE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.NETWORK_BYPASS_PRIVATE_DNS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.NETWORK_SETUP_WIZARD",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.NFC_TRANSACTION_EVENT",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.OBSERVE_APP_USAGE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.OPEN_APPLICATION_DETAILS_OPEN_BY_DEFAULT_PAGE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.QUERY_TIME_ZONE_RULES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.READ_RUNTIME_PROFILES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.READ_SYSTEM_UPDATE_INFO",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.RECOVER_KEYSTORE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.SEND_SHOW_SUSPENDED_APP_DETAILS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.SET_HARMFUL_APP_WARNINGS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.SHOW_KEYGUARD_MESSAGE",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.STATSCOMPANION",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.SUSPEND_APPS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.TEST_BLACKLISTED_PASSWORD",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.UNLIMITED_SHORTCUTS_API_CALLS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.USE_BIOMETRIC",
+    "permissionName": "允许应用程序使用生物特征（如人脸或指纹）进行身份验证。",
+    "permissionDes": "身份验证"
+  },
+  {
+    "permission": "android.permission.USE_RESERVED_DISK",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.WATCH_APPOPS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.WRITE_EMBEDDED_SUBSCRIPTIONS",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "com.android.permission.INSTALL_EXISTING_PACKAGES",
+    "permissionName": "",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ACCESS_BACKGROUND_LOCATION",
+    "permissionName": "支持后台访问位置",
+    "permissionDes": "支持后台访问位置"
+  },
+  {
+    "permission": "android.permission.ADD_VOICEMAIL",
+    "permissionName": "添加语音邮件",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ACCESS_MEDIA_LOCATION",
+    "permissionName": "读取照片位置信息",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.ACTIVITY_RECOGNITION",
+    "permissionName": "识别身体活动",
+    "permissionDes": ""
+  },
+  {
+    "permission": "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+    "permissionName": "授予对照片和视频的部分访问",
+    "permissionDes": "授予对照片和视频的部分访问"
+  },
+  {
+    "permission": "android.permission.POST_NOTIFICATIONS",
+    "permissionName": "发送通知",
+    "permissionDes": "发送通知"
+  },
+  {
+    "permission": "android.permission.NEARBY_WIFI_DEVICES",
+    "permissionName": "对附近Wi-Fi设备的访问",
+    "permissionDes": "对附近Wi-Fi设备的访问"
+  },
+  {
+    "permission": "android.permission.BODY_SENSORS_BACKGROUND",
+    "permissionName": "后台访问传感器",
+    "permissionDes": "后台访问传感器"
+  },
+  {
+    "permission": "android.permission.READ_MEDIA_IMAGES",
+    "permissionName": "读取图片",
+    "permissionDes": "读取图片"
+  },
+  {
+    "permission": "android.permission.READ_MEDIA_VIDEO",
+    "permissionName": "读取视频",
+    "permissionDes": "读取视频"
+  },
+  {
+    "permission": "android.permission.READ_MEDIA_AUDIO",
+    "permissionName": "读取音频",
+    "permissionDes": "读取音频"
+  },
+  {
+    "permission": "android.permission.BLUETOOTH_SCAN",
+    "permissionName": "蓝牙扫描",
+    "permissionDes": "蓝牙扫描"
+  },
+  {
+    "permission": "android.permission.BLUETOOTH_ADVERTISE",
+    "permissionName": "蓝牙广播",
+    "permissionDes": "当前设备可被蓝牙搜索到"
+  },
+  {
+    "permission": "android.permission.UWB_RANGING",
+    "permissionName": "超宽带(UWB)通信",
+    "permissionDes": "超宽带(UWB)通信"
+  },
+  {
+    "permission": "android.permission.BLUETOOTH_CONNECT",
+    "permissionName": "蓝牙连接",
+    "permissionDes": "蓝牙连接"
+  },
+  {
+    "permission": "android.permission.RECEIVE_USER_PRESENT",
+    "permissionName": "监听设备解锁广播",
+    "permissionDes": "监听设备解锁广播的权限。应用程序如果想要接收用户解锁设备的事件，需要请求这个权限"
+  },
+  {
+    "permission": "android.permission.QUERY_ALL_PACKAGES",
+    "permissionName": "查询已安装应用列表",
+    "permissionDes": "允许应用查询设备上所有已安装应用的列表，包括那些不是为当前用户设计的应用。"
+  }
+]

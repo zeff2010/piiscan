@@ -1,0 +1,2851 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>App 个人信息保护合规检测平台</title>
+<style>
+:root{
+  --ink:#16202e;--ink2:#4a5c72;--ink3:#8595a8;--line:#e3e9f0;--line2:#eef2f7;
+  --bg:#f4f6fa;--card:#fff;--brand:#1e5eb8;--brand2:#2f7fe0;--brandbg:#eef4fd;
+  --high:#c92a2a;--highbg:#fdf0f0;--mid:#b87200;--midbg:#fff7e8;
+  --low:#357f9c;--lowbg:#edf6fa;--ok:#1f7a4d;--okbg:#eaf7ef;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14.5px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+/* ---- 整体骨架：左侧固定菜单 + 右侧单页内容 ----
+   2026-11-11 用户要求分页：原来「统计 + 设备 + 表单 + 任务列表」全挤在一张
+   长页上，越往下越像流水账 —— 提交任务要滚到中段，看进度要滚到底部。
+   现在按"看状态 / 交任务 / 盯任务"三件事分三页，左侧菜单常驻。
+   只用 hash 路由（#/status、#/new、#/jobs），刷新与前进后退都能落在当前页。 */
+.shell{display:flex;min-height:100vh;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:230px;z-index:30;
+  background:#101a29;display:flex;flex-direction:column;padding:20px 13px 14px;}
+.main{margin-left:230px;flex:1;min-width:0;padding:26px 26px 72px;}
+.page{display:none;max-width:1120px;margin:0 auto;}
+.page.on{display:block;}
+.phead{margin:0 0 18px;}
+.phead h1{margin:0;font-size:21px;letter-spacing:.3px;}
+.phead p{margin:7px 0 0;color:var(--ink2);font-size:13px;line-height:1.7;}
+/* 统计卡：原来贴在深蓝渐变头里（白字半透明），现在头没了，改成浅底卡片。
+   数字用大字号单独一行，标签弱化为灰字 —— 一眼先看到数，再看到是什么数。 */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+  gap:12px;margin:0 0 18px;}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:11px;
+  padding:13px 16px;box-shadow:0 1px 3px rgba(22,32,46,.04);
+  font-size:12.5px;color:var(--ink3);}
+.stat b{font-size:22px;display:block;line-height:1.25;color:var(--ink);font-weight:700;}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:20px 22px;box-shadow:0 1px 3px rgba(22,32,46,.04);}
+.card h2{margin:0 0 15px;font-size:16px;display:flex;align-items:center;gap:8px;}
+.card h2:before{content:"";width:4px;height:15px;background:var(--brand);border-radius:2px;}
+.tabs{display:flex;gap:6px;background:#eef2f7;border-radius:9px;padding:4px;margin-bottom:16px;}
+.tab{flex:1;text-align:center;padding:8px;border-radius:7px;cursor:pointer;
+  font-size:13.5px;color:var(--ink2);font-weight:500;transition:.18s;}
+.tab.on{background:#fff;color:var(--brand);box-shadow:0 1px 3px rgba(22,32,46,.1);}
+label{display:block;font-size:13px;color:var(--ink2);margin:13px 0 6px;font-weight:500;}
+label .opt{color:var(--ink3);font-weight:400;}
+input[type=text],input[type=number],textarea,select{
+  width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;
+  font-size:13.5px;font-family:inherit;color:var(--ink);background:#fcfdff;}
+input:focus,textarea:focus{outline:none;border-color:var(--brand2);background:#fff;
+  box-shadow:0 0 0 3px rgba(47,127,224,.1);}
+textarea{resize:vertical;min-height:74px;}
+.drop{border:2px dashed #c3d4ea;border-radius:10px;padding:26px 16px;text-align:center;
+  background:#f9fbff;cursor:pointer;transition:.18s;}
+.drop:hover,.drop.over{border-color:var(--brand2);background:var(--brandbg);}
+.drop .ico{font-size:26px;color:var(--brand2);}
+.drop .t{font-size:14px;margin-top:6px;color:var(--ink);font-weight:500;}
+.drop .s{font-size:12.5px;color:var(--ink3);margin-top:3px;}
+.file-name{margin-top:9px;font-size:13px;color:var(--brand);word-break:break-all;}
+/* ---- 选项区：档位常驻、其余折叠 ----
+   2026-11-01 用户要求：新建任务的「高级选项」只露检测档位，其他参数点开才看；
+   「AI 增强」整组也默认收起。理由很实在 —— 这两组里绝大多数参数一个项目周期
+   都不会改一次（模型地址、首启时长、复现开关），常驻展开只会把"档位"和
+   "开始检测"按钮挤到看不见的地方，反而让常用项更难找。
+   用原生 <details>：不依赖 JS，折叠状态由浏览器管，刷新也不会串。 */
+.sect{margin-top:16px;border-top:1px solid var(--line2);padding-top:13px;}
+.sect-h{font-size:13.5px;font-weight:600;color:var(--brand);margin-bottom:2px;
+  display:flex;align-items:center;gap:7px;}
+.sect-h:before{content:"";width:3px;height:13px;background:var(--brand);border-radius:2px;}
+.sect-h .opt{font-weight:400;}
+.adv{margin-top:4px;}
+.adv>summary{font-size:13.5px;font-weight:600;color:var(--brand);
+  display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;
+  list-style:none;padding:2px 0;border-radius:6px;}
+.adv>summary::-webkit-details-marker{display:none;}
+.adv>summary:before{content:"";width:3px;height:13px;background:var(--brand);border-radius:2px;flex:none;}
+/* 展开箭头：用 CSS 画实心三角，不用字符。
+   实测（Edge/Windows）里 "▸" 会退化成一个小圆点，跟正文的 "·" 分不清，
+   看着像标点而不像"可以点开"。border 三角在任何字体下都一样。 */
+.adv>summary:after{content:"";width:0;height:0;margin-left:5px;order:9;
+  border-left:5px solid var(--brand2);
+  border-top:4px solid transparent;border-bottom:4px solid transparent;
+  transition:transform .15s;}
+.adv[open]>summary:after{transform:rotate(90deg);}
+.adv>summary:hover{background:var(--brandbg);}
+.adv>summary .opt{font-weight:400;}
+.optgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;}
+.optgrid>.full{grid-column:1/-1;}
+.optgrid label{margin-top:10px;}
+@media(max-width:520px){.optgrid{grid-template-columns:1fr}}
+/* 复选框横排：竖着排三个开关要占三行，横排只占一行 */
+.chkrow{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;margin-top:10px;}
+.chkrow .chk{margin-top:0;align-items:flex-start;}
+.chkrow .chk label{line-height:1.45;}
+.tip.sm{font-size:12px;line-height:1.7;margin-top:7px;}
+.row{display:flex;gap:10px;align-items:center;}
+.row>*{flex:1}
+.chk{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink2);margin-top:10px;}
+.chk input{width:16px;height:16px;accent-color:var(--brand);}
+/* 固定启用的环节：不给改，但必须看起来是"明确打开"。浏览器会把 disabled 的
+   勾选框压成系统灰（accent-color 在 disabled 状态不生效），看上去像"这项没开/
+   被禁用"，而它实际是常开。所以隐藏原生控件，用品牌色方块自己画一个勾 ——
+   文字说明写的也是"固定启用"，视觉与语义必须一致。 */
+.chk.locked{cursor:default;}
+.chk.locked input{display:none;}
+.chk.locked::before{content:"✓";display:inline-flex;align-items:center;
+  justify-content:center;flex:0 0 auto;width:16px;height:16px;border-radius:4px;
+  background:var(--brand);color:#fff;font-size:11px;font-weight:700;line-height:1;}
+.chk.locked label{color:var(--ink);font-weight:500;cursor:default;}
+button{width:100%;margin-top:18px;padding:11px;border:none;border-radius:9px;
+  background:linear-gradient(135deg,#1e5eb8,#2f7fe0);color:#fff;font-size:14.5px;
+  font-weight:600;cursor:pointer;font-family:inherit;transition:.18s;}
+button:hover{filter:brightness(1.07);}
+button:disabled{opacity:.55;cursor:not-allowed;filter:none;}
+.bar{height:5px;background:#e8eef6;border-radius:5px;overflow:hidden;margin-top:12px;display:none;}
+.bar.on{display:block}
+.bar i{display:block;height:100%;width:0;background:var(--brand2);transition:width .25s;}
+/* 列表独占一页之后可以给更高：原来固定 640px 是为了和上方表单共存，
+   现在这一页只有列表，固定值会在 1080p 上留一大片空白。 */
+.list{max-height:max(320px,calc(100vh - 330px));overflow:auto;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{text-align:left;padding:10px 9px;border-bottom:1px solid var(--line2);vertical-align:middle;}
+th{color:var(--ink2);font-weight:600;font-size:12.5px;background:#fafbfd;
+  position:sticky;top:0;z-index:1;}
+tr:hover td{background:#fafcff;}
+.badge{font-size:11.5px;padding:2.5px 9px;border-radius:20px;white-space:nowrap;font-weight:600;}
+.b-queued{background:#f0f2f6;color:var(--ink2);}
+.b-running{background:var(--brandbg);color:var(--brand);}
+.b-paused{background:var(--midbg);color:var(--mid);}
+.b-canceled{background:#eef0f3;color:var(--ink3);}
+.b-done{background:var(--okbg);color:var(--ok);}
+.b-failed{background:var(--highbg);color:var(--high);}
+/* 已跳过用中性灰而不是红色：它表示"没测"，不是"测出问题"。
+   批量提交时这两种情况混在一起，读报告的人会误判。 */
+.b-skipped{background:#f3f1ea;color:#8a7a52;}
+.pkg{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--ink2);}
+.app{font-weight:600;color:var(--ink);}
+.sub{font-size:11.5px;color:var(--ink3);}
+.r{display:inline-flex;gap:5px;flex-wrap:wrap;}
+.chip{font-size:11.5px;padding:1.5px 8px;border-radius:14px;font-weight:600;}
+.c-high{background:var(--highbg);color:var(--high);}
+.c-mid{background:var(--midbg);color:var(--mid);}
+.c-low{background:var(--lowbg);color:var(--low);}
+.act{color:var(--brand);text-decoration:none;font-size:12.5px;font-weight:600;white-space:nowrap;}
+.act:hover{text-decoration:underline;}
+.act.dis{color:var(--ink3);pointer-events:none;}
+/* "停止中…"：不是按钮，是状态。不能点、不能悬停出下划线，否则又像坏了。 */
+.act.off{color:var(--ink3);pointer-events:none;cursor:default;}
+.act.warn{color:var(--high);}
+.acts{display:flex;flex-wrap:wrap;gap:2px 10px;}
+/* 批量选择 */
+th.sel,td.sel{width:34px;padding-right:0;}
+td.sel input,th.sel input{width:15px;height:15px;accent-color:var(--brand);cursor:pointer;}
+td.sel input:disabled{cursor:not-allowed;opacity:.35;}
+.bulkbar{display:none;align-items:center;gap:12px;flex-wrap:wrap;
+  margin:0 0 10px;padding:8px 12px;border-radius:9px;
+  background:var(--brandbg);border:1px solid #cfe0f7;font-size:12.5px;color:var(--brand);}
+.bulkbar.on{display:flex;}
+.bulkbar b{font-weight:700;}
+/* 勾选范围的说明文字：弱化处理，但必须一直在 —— 只写"已选 3 项"时，
+   用户没法判断这 3 项是筛出来的 3 条还是全库里的 3 条（2026-11-01 误删事故） */
+.bulkbar .scope{color:var(--ink2);font-weight:400;}
+.bulkbar .bdel{margin:0;width:auto;padding:5px 13px;font-size:12.5px;border-radius:7px;
+  background:var(--high);color:#fff;}
+.bulkbar .bdel:disabled{opacity:.5;cursor:default;}
+.bulkbar .bdl{margin:0;width:auto;padding:5px 13px;font-size:12.5px;border-radius:7px;
+  background:var(--brand);color:#fff;}
+.bulkbar .bdl:disabled{opacity:.55;cursor:default;}
+/* 简版下载用描边样式：两个实心主色按钮并排会分不清哪个是主操作 */
+.bulkbar .bdl.alt{background:#fff;color:var(--brand);border:1px solid var(--brand);}
+.bulkbar .bdl.alt:hover{filter:none;background:#f2f7fd;}
+.bulkbar .bghost{margin:0;width:auto;padding:5px 11px;font-size:12.5px;border-radius:7px;
+  background:#fff;color:var(--ink2);border:1px solid var(--line);}
+.bulkbar .bghost:hover{filter:none;background:#f7f9fc;}
+/* ---- 检测环境（系统状态页）----
+   原来这块是白字压在深蓝渐变头上；现在头换成浅色页面，"半透明白"必须一起
+   换掉，否则浅底白字等于看不见。设备卡的三种状态色也改成浅底深字版本，
+   语义不变：绿=就绪、黄=su 可用但未验证、红=不可用。 */
+.envwrap{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:16px 18px;box-shadow:0 1px 3px rgba(22,32,46,.04);}
+.envtop{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.envtop .eb{font-weight:600;font-size:14px;color:var(--ink);}
+.envtop .envsum{font-size:12.5px;color:var(--ink2);}
+.envtop button{margin:0 0 0 auto;width:auto;padding:6px 13px;font-size:12.5px;border-radius:7px;
+  background:#fff;color:var(--brand);border:1px solid var(--brand);font-weight:600;}
+.envtop button:hover{filter:none;background:var(--brandbg);}
+.devgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(282px,1fr));
+  gap:12px;margin-top:13px;}
+.devcard{background:#fbfcfe;border:1px solid var(--line);border-radius:10px;
+  padding:12px 14px 11px;font-size:12.5px;color:var(--ink2);}
+.devcard.bad{background:var(--highbg);border-color:#f2cccc;}
+/* 未登记 ≠ 坏了。用虚线与灰底表示"平台还没接管它"，别用错误色，
+   否则人会以为这台手机有问题。（2026-11-11 移除之后它就该变这样） */
+.devcard.unreg{background:transparent;border-style:dashed;box-shadow:none;}
+.devcard.unreg .dn{font-weight:600;color:var(--ink2);}
+/* 未登记那一组之前的说明条。单独一个类，别复用 .devcard（会被算成一张卡）。 */
+.devsep{color:var(--ink3);font-size:11.5px;line-height:1.7;padding:2px 2px 0;}
+.devcard.sel{border-color:var(--brand2);box-shadow:0 0 0 3px rgba(47,127,224,.13);}
+.devcard .dn{font-weight:700;color:var(--ink);font-size:13.5px;display:flex;align-items:center;
+  gap:6px;flex-wrap:wrap;}
+.devcard .ds{color:var(--ink3);font-size:11.5px;margin-top:3px;
+  font-family:ui-monospace,Consolas,monospace;}
+.devcard .chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;}
+.dchip{background:#eef2f7;border-radius:5px;padding:1.5px 7px;font-size:11px;
+  color:var(--ink2);white-space:nowrap;}
+.dchip.g{background:var(--okbg);color:var(--ok);}
+.dchip.y{background:var(--midbg);color:var(--mid);}
+.dchip.r{background:var(--highbg);color:var(--high);}
+.dchip.n{background:var(--brandbg);color:var(--brand);font-weight:700;}
+/* note 是"这台机当前怎么个情况"的补充说明，不是错误。
+   原来跟着深色卡一起用了浅红，换到浅底之后红字会被读成"这台机有问题"，
+   而它写的往往是"已 root（实测提权成功）"这种正常信息。
+   只有整张卡判为不可用（.bad）时，note 才该是红的。 */
+.devcard .dnote{margin-top:7px;font-size:11.5px;color:var(--ink2);line-height:1.6;}
+.devcard.bad .dnote{color:var(--high);}
+.devcard .dacts{display:flex;gap:12px;margin-top:9px;}
+.devcard .dacts a{color:var(--brand);font-size:11.5px;text-decoration:none;font-weight:600;cursor:pointer;}
+.devcard .dacts a:hover{text-decoration:underline;}
+.devcard .dacts a[disabled]{opacity:.5;cursor:default;text-decoration:none;}
+/* ---- 左侧菜单 ---- */
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px 17px;
+  border-bottom:1px solid rgba(255,255,255,.08);}
+.brand .logo{width:34px;height:34px;border-radius:9px;flex:none;display:flex;
+  align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#2f7fe0,#1e5eb8);color:#fff;}
+.brand .logo svg{width:19px;height:19px;}
+.brand .bt{color:#fff;font-size:14px;font-weight:600;line-height:1.35;}
+.brand .bs{color:#7d8fa8;font-size:11.5px;margin-top:2px;line-height:1.35;}
+.nav{margin-top:14px;display:flex;flex-direction:column;gap:4px;}
+.nav a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;
+  color:#c3d0e2;text-decoration:none;font-size:13.5px;font-weight:500;transition:.15s;}
+.nav a svg{width:17px;height:17px;flex:none;opacity:.85;}
+.nav a:hover{background:rgba(255,255,255,.07);color:#fff;}
+.nav a.on{background:linear-gradient(135deg,#1e5eb8,#2f7fe0);color:#fff;
+  box-shadow:0 4px 14px rgba(30,94,184,.4);}
+.nav a.on svg{opacity:1;}
+/* 运行中数量贴在菜单上：不切到列表页也能知道有没有任务在跑。
+   为 0 时清空内容，:empty 规则会把它收掉，不留一个空胶囊。 */
+.nav a .nb{margin-left:auto;background:rgba(255,255,255,.16);color:#fff;font-size:11px;
+  padding:1px 7px;border-radius:20px;font-weight:600;line-height:1.6;}
+.nav a.on .nb{background:rgba(255,255,255,.3);}
+.nav a .nb:empty{display:none;}
+.sidefoot{margin-top:auto;padding:13px 12px 0;border-top:1px solid rgba(255,255,255,.08);
+  font-size:11.5px;color:#6f819a;line-height:1.8;}
+.sidefoot .dot{display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:#3fbf7f;margin-right:6px;vertical-align:middle;}
+@media(max-width:900px){
+  /* .shell 必须回到 block：侧栏在 flex 行里会变成"左边一列"，
+     即使 width:auto 也照样挤掉正文 —— 窄屏下它要变成顶部横条。 */
+  .shell{display:block;}
+  .sidebar{position:sticky;top:0;bottom:auto;width:auto;flex-direction:row;
+    align-items:center;gap:12px;padding:10px 13px;box-shadow:0 2px 12px rgba(16,26,41,.2);}
+  .brand{padding:0;border:0;flex:none;}
+  .brand .bs{display:none;}
+  .nav{flex-direction:row;margin:0 0 0 auto;gap:4px;}
+  .nav a{padding:7px 10px;white-space:nowrap;font-size:12.5px;}
+  .nav a svg{display:none;}
+  .nav a .nb{margin-left:6px;}
+  .sidefoot{display:none;}
+  .main{margin-left:0;padding:16px 13px 60px;}
+  .stats{grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:9px;}
+  .stat{padding:10px 12px;}
+  .stat b{font-size:18px;}
+  /* 折叠标题在窄屏会被长说明挤成竖排（"更多参 数"），
+     让它整体换行到下一行，读起来才是一个标题 + 一句说明。
+     展开箭头的 order 要提到说明之前，否则它会跟着说明一起掉到第三行，
+     孤零零一个三角挂在左边。 */
+  .adv>summary{flex-wrap:wrap;row-gap:2px;}
+  .adv>summary:after{order:1;}
+  .adv>summary .opt{order:2;flex-basis:100%;padding-left:10px;}
+  .tab{font-size:12.5px;padding:7px 4px;}
+}
+/* ---------- 手机管理（2026-11-11） ----------
+   一台机器一行：左边是可读信息（别名/序列号/系统/当前结论），
+   右边是三个动作。不做成表格是有原因的 —— 别名和"为什么现在不能用"
+   都是不定长文本，塞进单元格会把列定死，或者一行挤成四五段折行。 */
+.dmtop{display:flex;align-items:flex-start;gap:14px;margin-bottom:13px;}
+.dmtop .dh{font-size:15px;font-weight:700;margin:0;display:flex;align-items:center;gap:8px;}
+.dmtop .dh .cnt{font-size:12px;font-weight:400;color:var(--ink3);
+  background:var(--line2);border-radius:20px;padding:1px 9px;}
+.dmtop button{width:auto;margin:0 0 0 auto;flex:none;padding:8px 15px;font-size:13px;}
+.reglist{display:flex;flex-direction:column;gap:9px;}
+.regrow{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--line);
+  border-radius:10px;padding:11px 13px;background:#fff;}
+.regrow.off{background:#fafbfd;border-style:dashed;}
+.regrow .rg-main{flex:1;min-width:0;}
+.regrow .rg-name{font-weight:700;font-size:14px;display:flex;gap:9px;
+  align-items:baseline;flex-wrap:wrap;}
+.regrow .rg-serial{font-weight:400;font-size:11.5px;color:var(--ink3);
+  font-family:ui-monospace,Consolas,monospace;}
+.regrow .rg-meta{font-size:12px;color:var(--ink2);margin-top:3px;line-height:1.6;}
+.regrow .rg-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;}
+.regrow .rg-reason{margin-top:6px;font-size:12px;line-height:1.6;color:var(--ink2);}
+.regrow .rg-reason.bad{color:var(--high);}
+.regrow .rg-acts{display:flex;flex-direction:column;gap:6px;flex:none;}
+.regrow .rg-acts button{width:auto;margin:0;padding:5px 11px;font-size:12px;
+  background:var(--brandbg);color:var(--brand);border-radius:7px;}
+.regrow .rg-acts button.danger{background:var(--highbg);color:var(--high);}
+.regrow .rg-acts button:hover{filter:brightness(.97);}
+/* ---- AI 模型服务卡片 ---- */
+.ailist{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.ailist .regrow{align-items:center;}
+.ailist .rg-acts{flex-direction:row;flex-wrap:wrap;gap:6px;justify-content:flex-end;}
+.aiform{margin-top:10px;border:1px solid var(--line);border-radius:11px;
+  padding:13px 14px;background:#fbfcfe;}
+.aiform .aih{font-weight:700;font-size:13.5px;margin-bottom:10px;}
+.aifoot{display:flex;gap:8px;align-items:center;margin-top:11px;flex-wrap:wrap;}
+.aifoot button{width:auto;margin:0;padding:8px 16px;font-size:13px;}
+.aifoot button.ghost{background:#fff;border:1px solid var(--line);color:var(--ink2);}
+.aikey{font-family:ui-monospace,Consolas,monospace;color:var(--ink3);}
+/* 添加手机向导：步骤要能一眼扫完，所以状态点用实心/空心而不是对勾字符
+   （字体回退时 "✓" 会在某些系统上变成方块）。 */
+.wiz{position:fixed;inset:0;background:rgba(16,24,36,.5);display:none;
+  align-items:center;justify-content:center;padding:20px;z-index:60;}
+.wiz.on{display:flex;}
+.wiz .box{background:#fff;border-radius:13px;width:min(660px,100%);max-height:88vh;
+  display:flex;flex-direction:column;overflow:hidden;box-shadow:0 18px 50px rgba(16,24,36,.3);}
+.wiz .wh{display:flex;align-items:center;gap:10px;padding:14px 18px;
+  border-bottom:1px solid var(--line);}
+.wiz .wh b{font-size:15px;}
+.wiz .wh .wx{margin-left:auto;width:auto;margin-top:0;padding:5px 12px;
+  font-size:12.5px;background:#eef2f7;color:var(--ink2);border-radius:7px;}
+.wiz .wbody{padding:16px 18px;overflow:auto;}
+.wiz .wfoot{padding:12px 18px;border-top:1px solid var(--line);
+  display:flex;gap:9px;align-items:center;}
+.wiz .wfoot button{width:auto;margin:0;padding:8px 16px;font-size:13px;}
+.wiz .wfoot .grow{flex:1;}
+.wiz .wfoot .hint{font-size:12px;color:var(--ink3);}
+.picklist{display:flex;flex-direction:column;gap:8px;}
+.pick{border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;
+  display:flex;gap:10px;align-items:flex-start;}
+.pick:hover{border-color:var(--brand2);background:#f8fbff;}
+.pick.on{border-color:var(--brand2);background:#f3f8ff;
+  box-shadow:0 0 0 2px rgba(47,127,224,.15);}
+.pick .pi{flex:none;width:17px;height:17px;border-radius:50%;border:2px solid #c7d3e2;
+  margin-top:2px;background:#fff;}
+.pick.on .pi{border-color:var(--brand2);
+  background:radial-gradient(circle at center,#2f7fe0 0 4.5px,#fff 4.5px);}
+.pick .pt{flex:1;min-width:0;}
+.pick .pn{font-weight:600;font-size:13.5px;display:flex;gap:8px;flex-wrap:wrap;
+  align-items:baseline;}
+.steps{display:flex;flex-direction:column;}
+.st{display:flex;gap:10px;padding:7px 0;align-items:flex-start;}
+.st .ic{flex:none;width:17px;height:17px;border-radius:50%;border:2px solid #d5dde9;
+  margin-top:3px;background:#fff;}
+.st.ok .ic{background:#2f9e63;border-color:#2f9e63;}
+.st.fail .ic{background:#d8483f;border-color:#d8483f;}
+.st.skip .ic{background:#e9eef5;border-color:#d5dde9;}
+.st.running .ic{background:var(--brand2);border-color:var(--brand2);
+  animation:wizpulse 1.1s ease-in-out infinite;}
+@keyframes wizpulse{0%,100%{opacity:.3}50%{opacity:1}}
+.st .stt{font-weight:600;font-size:13px;line-height:1.6;}
+.st.fail .stt{color:var(--high);}
+.st .sd{color:var(--ink2);font-size:12px;margin-top:2px;line-height:1.65;
+  word-break:break-word;}
+.st .sf{color:var(--high);font-size:12px;margin-top:3px;line-height:1.65;}
+.wsum{font-size:13px;margin:0 0 12px;padding:10px 12px;border-radius:9px;
+  background:var(--brandbg);color:var(--brand);line-height:1.7;}
+.wsum.bad{background:var(--highbg);color:var(--high);}
+.wsum.warn{background:var(--midbg);color:var(--mid);}
+/* 日志面板 */
+.modal{position:fixed;inset:0;background:rgba(16,24,36,.5);display:none;
+  align-items:center;justify-content:center;z-index:50;padding:24px;}
+.modal.on{display:flex;}
+.modal .box{background:#fff;border-radius:12px;width:min(900px,100%);max-height:80vh;
+  display:flex;flex-direction:column;overflow:hidden;box-shadow:0 18px 60px rgba(0,0,0,.28);}
+.modal .box h3{margin:0;padding:14px 18px;border-bottom:1px solid var(--line);
+  font-size:15px;display:flex;justify-content:space-between;align-items:center;}
+.modal .box h3 button{width:auto;margin:0;padding:5px 12px;font-size:12.5px;
+  background:#f0f3f8;color:var(--ink2);}
+.modal pre{margin:0;padding:16px 18px;overflow:auto;font-size:12px;line-height:1.65;
+  font-family:ui-monospace,Consolas,monospace;color:#2b3a4d;white-space:pre-wrap;}
+/* 任务列表：筛选 + 分页（用户 2026-10-31 第五条） */
+.filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  margin:0 0 12px;font-size:12.5px;color:var(--ink2);}
+.filters label{display:inline;margin:0;font-weight:500;font-size:12.5px;color:var(--ink2);}
+.filters select{width:auto;margin:0;padding:7px 10px;font-size:12.5px;border-radius:8px;}
+.filters .cnt{margin-left:auto;color:var(--ink3);}
+.filters .cnt b{color:var(--ink);}
+.pager{display:flex;gap:6px;align-items:center;justify-content:flex-end;
+  margin-top:12px;font-size:12.5px;color:var(--ink3);flex-wrap:wrap;}
+.pager button{width:auto;margin:0;padding:5px 11px;font-size:12.5px;border-radius:7px;
+  background:#fff;color:var(--ink2);border:1px solid var(--line);}
+.pager button.on{background:var(--brand);color:#fff;border-color:var(--brand);}
+.pager button:disabled{opacity:.45;cursor:not-allowed;}
+.pager .gap{padding:0 2px;}
+.mini{height:78vh;border-radius:12px;overflow:hidden;border:1px solid var(--line);}
+.muted{color:var(--ink3);font-size:13px;text-align:center;padding:32px 0;}
+.tip{font-size:12.5px;color:var(--ink3);margin-top:10px;line-height:1.75;}
+.err{background:var(--highbg);color:var(--high);border-radius:8px;padding:9px 12px;
+  font-size:13px;margin-top:12px;display:none;}
+.err.on{display:block}
+.stage{font-size:11.5px;color:var(--brand);}
+/* 状态列的两行时间各自不折行。折开之后一条任务要占四行，"提交 18:14 ·
+   开始 18:14:24" 和"结束 18:23 · 耗时 9 分"会各断一次，一屏能看的任务数直接减半。
+   折行是列宽不够逼出来的，让这两行 nowrap 后表格会自动把宽度让给状态列。 */
+td .sub.tl{white-space:nowrap;}
+.link-mini{display:inline-block;margin-top:7px;font-size:12px;color:var(--brand);
+  text-decoration:none;font-weight:500;}
+.link-mini:hover{text-decoration:underline;}
+select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;
+  font-size:13.5px;font-family:inherit;background:#fff;color:var(--ink);margin-bottom:6px;}
+.ghost{width:auto;padding:8px 16px;background:#fff;color:var(--brand);
+  border:1px solid var(--brand);font-size:13px;font-weight:600;}
+.ghost:hover{background:var(--brandbg);filter:none;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end;}
+.row2 label{margin-top:8px;}
+code{font-family:ui-monospace,Consolas,monospace;font-size:12px;
+  background:#f2f4f8;padding:1px 5px;border-radius:4px;color:var(--ink2);}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- 左侧常驻菜单。三个页面 = 三件不同的事：看状态 / 交任务 / 盯任务。
+       以前全挤在一页上，任务一多就要在"表单"和"列表"之间反复滚。 -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3l7 3v5.6c0 4.3-2.9 7.8-7 9.4-4.1-1.6-7-5.1-7-9.4V6z"/>
+        <path d="M9 12l2 2 4-4"/></svg></div>
+      <div>
+        <div class="bt">合规检测平台</div>
+        <div class="bs">App 个人信息保护</div>
+      </div>
+    </div>
+    <nav class="nav" id="nav">
+      <a href="#/status" data-page="status">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12h3.5l2.5-6 4 12 2.5-6H21"/></svg>
+        <span>系统状态</span>
+      </a>
+      <a href="#/new" data-page="new">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="8.5"/><path d="M12 8.4v7.2M8.4 12h7.2"/></svg>
+        <span>新建任务</span>
+      </a>
+      <a href="#/jobs" data-page="jobs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8.5 6.5h11M8.5 12h11M8.5 17.5h11"/>
+          <path d="M4.2 6.5h.01M4.2 12h.01M4.2 17.5h.01"/></svg>
+        <span>任务列表</span>
+        <span class="nb" id="nav-run"></span>
+      </a>
+      <a href="#/devices" data-page="devices">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="7" y="2.6" width="10" height="18.8" rx="2.4"/>
+          <path d="M10.6 5.2h2.8"/><path d="M10.5 18.4h3"/></svg>
+        <span>手机管理</span>
+        <span class="nb" id="nav-dev"></span>
+      </a>
+    </nav>
+    <!-- 底栏只说"服务在跑"：这是页面能刷出数据的前提，
+         但不写假版本号 —— 平台没有对外暴露版本接口。 -->
+    <div class="sidefoot"><span class="dot"></span>检测服务运行中</div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ========== 页面一：系统状态（默认页） ========== -->
+    <section class="page" id="page-status">
+      <div class="phead">
+        <h1>系统状态</h1>
+        <p>平台总体任务量与测试机就绪情况。动态采集依赖已 root、且 frida-server 可启动的测试机；
+           两台以上时请在「新建任务」里选定用哪一台。</p>
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="envwrap" id="envwrap">
+        <div class="envtop">
+          <span class="eb">检测环境</span>
+          <span class="envsum" id="envsum">正在读取测试机…</span>
+          <button id="envcheck" title="对每台设备各跑一遍自检（会顺带启动 frida-server）">全部自检</button>
+        </div>
+        <!-- 每台测试机一张卡：连接情况（插上没/授权没）与就绪情况（root/frida/是否被占用）
+             分开显示。原来只有一行"就绪 · 设备 xxx"，接了两台之后就答不出
+             "另一台现在是什么状态" —— 而排队的任务恰恰要用另一台。 -->
+        <div class="devgrid" id="devgrid"></div>
+      </div>
+
+      <!-- AI 模型服务（2026-11-12 从「新建任务」搬上来）。
+           这是**平台级**配置：换模型不该跟着某个任务走，也不该改 config.yaml
+           再重启。可以保存多套（本机 Ollama / DeepSeek / 内网 vLLM），
+           用哪一套由这里决定。新建任务页只保留"这次开哪些 AI 环节"。 -->
+      <div class="envwrap" id="aiwrap">
+        <div class="envtop">
+          <span class="eb">AI 模型服务</span>
+          <span class="envsum" id="aisum">正在读取…</span>
+          <button id="aiadd" type="button">+ 添加配置</button>
+        </div>
+        <div class="ailist" id="ailist"></div>
+        <div class="aiform" id="aiform" style="display:none">
+          <div class="aih" id="aiform-title">添加 AI 配置</div>
+          <div class="optgrid">
+            <div>
+              <label>名称 <span class="opt">（列表里靠它区分）</span></label>
+              <input type="text" id="f_name" placeholder="例如：本机 Ollama / DeepSeek"/>
+            </div>
+            <div>
+              <label>接口类型</label>
+              <select id="f_provider">
+                <option value="ollama">Ollama（本机 / 内网）</option>
+                <option value="deepseek">DeepSeek（云端 API）</option>
+                <option value="openai">其他 OpenAI 兼容接口</option>
+              </select>
+            </div>
+            <div>
+              <label>服务地址 <span class="opt">（留空用默认）</span></label>
+              <input type="text" id="f_base_url" placeholder="http://127.0.0.1:11434"/>
+            </div>
+            <div>
+              <label>文本模型</label>
+              <input type="text" id="f_model" placeholder="qwen2.5:7b"/>
+            </div>
+            <div>
+              <label>视觉模型 <span class="opt" id="f_vision_opt">（多模态；留空沿用文本模型）</span></label>
+              <input type="text" id="f_vision_model" placeholder="qwen2.5vl:7b"/>
+            </div>
+            <div>
+              <label>API 密钥 <span class="opt" id="f_key_opt">（DeepSeek 必填）</span></label>
+              <input type="password" id="f_api_key" placeholder="" autocomplete="new-password"/>
+            </div>
+            <div class="full">
+              <label>备注 <span class="opt">（可选）</span></label>
+              <input type="text" id="f_note" placeholder="例如：内网机器，仅工作日可用"/>
+            </div>
+            <div class="full">
+              <div class="tip sm" id="f_hint"></div>
+            </div>
+          </div>
+          <div class="aifoot">
+            <button type="button" id="f_save">保存并启用</button>
+            <button type="button" id="f_cancel" class="ghost">取消</button>
+            <span class="tip" id="f_out" style="margin:0;flex:1;min-width:0"></span>
+          </div>
+        </div>
+        <div class="tip sm" id="aitip">
+          这里只管<strong>连哪个模型服务</strong>。某个任务具体开哪些 AI 环节、多久问一次，
+          仍在「新建任务」里设。停用全部配置后，AI 环节回到关键词 + 结构树的确定性策略，报告照常生成。
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 页面二：新建任务 ========== -->
+    <section class="page" id="page-new">
+      <div class="phead">
+        <h1>新建检测任务</h1>
+        <p>提交 APK 文件、下载链接或应用商店详情页，平台将自动完成静态分析、隐私政策解析、
+           运行时采集与合规判定。提交成功后会自动跳到任务列表。</p>
+      </div>
+      <div class="card">
+      <div class="tabs">
+        <div class="tab on" data-mode="upload">上传 APK 文件</div>
+        <div class="tab" data-mode="url">APK 下载链接</div>
+        <div class="tab" data-mode="store">应用商店链接</div>
+      </div>
+
+      <div id="pane-upload">
+        <div class="drop" id="drop">
+          <div class="ico">⬆</div>
+          <div class="t">点击选择 APK 文件，或拖拽到此处</div>
+          <div class="s">支持 .apk，单文件建议不超过 800 MB</div>
+        </div>
+        <input type="file" id="file" accept=".apk,application/vnd.android.package-archive" style="display:none"/>
+        <div class="file-name" id="fname"></div>
+      </div>
+
+      <div id="pane-url" style="display:none">
+        <label>APK 下载链接</label>
+        <input type="text" id="apk_url" placeholder="https://example.com/app-release.apk"/>
+        <div class="tip">需为 APK 文件的直链。若链接指向下载页，请先取得真实下载地址。</div>
+      </div>
+
+      <div id="pane-store" style="display:none">
+        <label>应用商店详情页链接 <span class="opt">（一行一个，可一次提交多条）</span></label>
+        <textarea id="store_urls" rows="6" placeholder="https://sj.qq.com/appdetail/com.tencent.mm&#10;https://app.mi.com/details?id=com.tencent.mm&#10;https://www.wandoujia.com/apps/com.tencent.mm"></textarea>
+        <div class="tip">
+          平台会先到商店页面解析出真实下载地址，再下载 APK。支持：<b>应用宝</b>、<b>华为应用市场</b>、
+          <b>vivo 应用商店</b>、<b>小米应用商店</b>、<b>百度手机助手</b>、<b>豌豆荚</b>、<b>360 手机助手</b>。
+          <br/>多行提交时按顺序排队逐个检测；某一条下不到（下架、市场不提供网页下载、签名失效等）
+          会标记为「<b>已跳过</b>」并写清原因，不影响后面的任务。以 <code>#</code> 开头的行按注释忽略。
+        </div>
+        <div class="tip" id="store_count"></div>
+      </div>
+
+      <section class="sect">
+        <div class="sect-h">高级选项</div>
+        <!-- 档位常驻显示：它决定"测多久、测多深"，是每次都可能要动的唯一一项。
+             其余参数（政策链接、登录号码、复现开关…）默认收起来 ——
+             不收起时整页要滚很久，常用项反而被挤到看不见的地方。 -->
+        <div class="optgrid">
+          <div class="full">
+            <label>测试机<span class="opt" id="devlabel">（必须自己选一台；选定后整个任务都在这一台上跑）</span></label>
+            <div class="row">
+              <select id="device">
+                <option value="">正在读取设备…</option>
+              </select>
+              <button type="button" id="devrefresh" title="重新枚举 adb 设备（插拔手机后点这里）"
+                      style="flex:0 0 auto;width:auto;padding:10px 12px">刷新</button>
+            </div>
+            <div class="tip sm" id="devtip">—</div>
+            <!-- 设备卡在「系统状态」页，选机时想细看就得多点一次菜单。
+                 这里给条直达入口，省一次"去哪看"的犹豫。 -->
+            <a class="link-mini" href="#/status">查看每台测试机的详细状态 →</a>
+          </div>
+          <div class="full">
+            <label>检测档位<span class="opt">（档位越高覆盖越全，耗时越长）</span></label>
+            <!-- 默认 3 档：登录辅助测试默认开启，而 1、2 档在采集层就被强制"不登录"
+                 （见 config.DEPTH_PROFILES），默认停在 2 档会让"登录默认开"变成一句空话。 -->
+            <select id="depth">
+              <option value="pre">1 档 · 仅同意前 —— 约 2 分钟，只看隐私弹窗与同意前行为</option>
+              <option value="light">2 档 · 同意后浅测 —— 约 5 分钟，不登录，只到二级目录</option>
+              <option value="deep" selected>3 档 · 深度 —— 约 15 分钟，可登录，翻深层菜单</option>
+              <option value="extreme">4 档 · 极致 —— 约 60 分钟，尽可能走全功能</option>
+            </select>
+          </div>
+        </div>
+        <details class="adv">
+          <summary>更多参数 <span class="opt">（政策链接、登录手机号、首启时长、采集开关）</span></summary>
+          <div class="optgrid">
+            <div>
+              <label>隐私政策链接 <span class="opt">（留空自动获取）</span></label>
+              <input type="text" id="policy_url" placeholder="https://example.com/privacy.html"/>
+            </div>
+            <div>
+              <label>采集时长（秒）<span class="opt">（由所选档位决定，不能手填）</span></label>
+              <input type="number" id="duration" value="90" min="30" max="3600"/>
+            </div>
+            <div>
+              <label>首启观测时长（秒）<span class="opt">（等隐私弹窗）</span></label>
+              <input type="number" id="policy_wait" value="25" min="5" max="90"/>
+            </div>
+            <div class="full">
+              <div class="chkrow">
+                <div class="chk">
+                  <!-- 默认勾选（2026-11-06 用户口径）：很多功能页只在登录态后面，
+                       默认不登录就只能记「跳过未测」。不想登录的人在这里取消。 -->
+                  <input type="checkbox" id="login_test" checked/>
+                  <label for="login_test" style="margin:0">做登录辅助测试<span class="opt">（默认开；取消则只覆盖游客可见界面）</span></label>
+                </div>
+              </div>
+              <label>登录辅助测试手机号 <span class="opt">（随所选测试机自动切换；手填过的不会被覆盖）</span></label>
+              <input type="tel" id="login_phone" value="" placeholder="例如 13300000000" maxlength="13"/>
+              <div class="tip sm" id="phonetip">—</div>
+            </div>
+            <div class="full">
+              <label>隐私政策全文 <span class="opt">（链接抓不到时粘贴，优先级最高）</span></label>
+              <textarea id="policy_text" rows="2" placeholder="粘贴隐私政策正文…"></textarea>
+            </div>
+            <div class="full">
+              <div class="chkrow">
+                <div class="chk">
+                  <input type="checkbox" id="run_dynamic" checked/>
+                  <label for="run_dynamic" style="margin:0">执行设备动态采集<span class="opt">（需已 root 测试机并保持解锁）</span></label>
+                </div>
+                <div class="chk">
+                  <input type="checkbox" id="reset_app" checked/>
+                  <label for="reset_app" style="margin:0">检测前清除应用数据<span class="opt">（不勾则看不到首启弹窗）</span></label>
+                </div>
+                <div class="chk">
+                  <input type="checkbox" id="repro" checked/>
+                  <label for="repro" style="margin:0">问题项清数据重跑复现<span class="opt">（多用一轮采集时间）</span></label>
+                </div>
+              </div>
+            </div>
+            <div class="full">
+              <div class="tip sm">
+                动态采集：安装 APK 并<b>清数据</b>（才会走首启、弹窗才出现）→ 自动点开政策入口取正文 →
+                冷启动注入插桩并自动遍历分步截图。四个档位各自成套调整耦合参数
+                （时长 150 / 300 / 900 / 3600s，首启 45 / 30 / 45 / 60s，
+                单 hook 20 / 20 / 40 / 80 条，总事件 4k / 5k / 12k / 40k，
+                截图 20 / 24 / 60 / 160，复现 120 / 150 / 300 / 600s，
+                单屏点击上限 20 / 24 / 30 / 45 / 60，列表上拉 1 / 2 / 2 / 3 / 5 次）——
+                只加时长不加上限，事件会先被截断；只加上限不加时长，遍历走不到深层。
+                <br/>档位差别不只在时长：<b>1 档</b>取到政策正文即收工（不点同意），
+                <b>2 档</b>不登录、只点到二级目录，<b>3、4 档</b>才尝试微信快捷登录 / 手机号验证码登录。
+                <br/>登录辅助：走到登录页会先勾「我已阅读并同意」、再代填号码并点「获取验证码」，
+                <b>验证码默认直接从测试机短信收件箱读取</b>（测试机 SIM 就在机内，需 root）；
+                读不到时才退回人工——在该任务的「短信验证码」框里填。号码脱敏进报告
+                （133****0822），验证码不落库。
+                <br/>若点击后设备<b>一条短信都没收到</b>，报告会写明「发码请求未真正发出」，
+                而不是含糊的「未收到验证码」——两者对复核员意思完全不同。
+                <br/>复现：自动清数据后<b>按首轮记录的点击路径逐步重放</b>（不调模型，比首轮快很多）——
+                判据再次出现的保留<b>确证</b>，没再出现的降为<b>疑似</b>；
+                重放没走完或没采到数据时<b>状态不变</b>，报告写明原因（不拿"没走到"当"没复现"）。
+              </div>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section class="sect" id="ai-box">
+        <details class="adv">
+          <summary>AI 增强 <span class="opt">（用大模型替代关键词匹配与盲点式遍历；连哪个模型在「系统状态」里配）</span></summary>
+          <div class="optgrid">
+          <div class="full">
+            <div class="chkrow">
+              <div class="chk locked">
+                <input type="checkbox" id="ai_policy_vision" checked disabled/>
+                <label for="ai_policy_vision" style="margin:0">看截图识别政策入口 / 判断页面类型<span class="opt">（固定启用 · 需多模态；仅政策链接取不到时才触发，平时不耗时）</span></label>
+              </div>
+              <div class="chk locked">
+                <input type="checkbox" id="ai_policy_analyze" checked disabled/>
+                <label for="ai_policy_analyze" style="margin:0">政策全文深读 + 三方共享清单追链<span class="opt">（固定启用 · 纯文本；9219 字政策实测 33 秒）</span></label>
+              </div>
+              <div class="chk">
+                <input type="checkbox" id="ai_ui_agent" checked/>
+                <label for="ai_ui_agent" style="margin:0">AI 指挥 UI 遍历<span class="opt">（需多模态；默认开启，420 秒采集实测约多 60 秒，可取消）</span></label>
+              </div>
+            </div>
+          </div>
+          <div class="full">
+            <div class="tip sm" id="ai_where">
+              <b>模型服务不在这里配。</b>用哪个模型（本机 Ollama / DeepSeek / 内网接口）
+              是平台级设置，去 <a href="#/status">系统状态 → AI 模型服务</a> 里添加或切换；
+              这里只决定<strong>这一个任务</strong>开哪些 AI 环节。
+            </div>
+          </div>
+          <div>
+            <label>每几步问一次 AI</label>
+            <input type="number" id="ai_ui_agent_every" value="1" min="1" max="20"/>
+          </div>
+          <div>
+            <label>AI 决策次数上限 <span class="opt">（0 = 不限）</span></label>
+            <input type="number" id="ai_ui_agent_max_calls" value="0" min="0" max="2000"/>
+          </div>
+          <div class="full">
+            <div class="tip sm">
+              看截图定位入口能认出「服务协议及个人信息处理规则」这类关键词覆盖不到的写法，
+              还能指出正文里带颜色的超链接（它在界面结构里根本不是独立元素，只有看图才发现）；
+              政策深读抽取声明收集的信息类型、注销路径、投诉渠道并追链子文档；
+              AI 指挥遍历把每步截图交给模型决定点哪里。前两项需多模态，第三种最耗时 ——
+              启用后单次检测可能 10~40 分钟（速度不是本平台的优化目标）。
+              <br/>每问一次模型都要等一次推理：把「每几步问一次」调到 3~5 并设次数上限，
+              可在几乎不损失效果的前提下压成本；中间步骤照常走规则遍历。
+              <br/><b>若当前启用的是纯文本模型</b>（如 <code>deepseek-v4-pro</code>），两项看图环节会自动回退到规则策略 ——
+              这不是故障。DeepSeek 里能看图的是 <code>deepseek-flash</code>，换一个就行。
+            </div>
+          </div>
+        </div>
+        </details>
+      </section>
+
+      <div class="err" id="err"></div>
+      <button id="submit">开始检测</button>
+      <div class="bar" id="bar"><i></i></div>
+      <div class="tip">检测在后台队列中执行。启用动态采集时总耗时约 1.5–3 分钟（安装 + 首启观测 + UI 遍历）；仅静态与政策分析约 20–60 秒。提交成功后会自动跳到「任务列表」。</div>
+      </div>
+    </section>
+
+    <!-- ========== 页面三：任务列表 / 报告预览 ========== -->
+    <section class="page" id="page-jobs">
+      <div class="phead">
+        <!-- 报告预览复用这个标题：点「查看」时改成「检测报告预览」，
+             返回列表时改回来。页面标题就是当前所处的状态，不再另起一行小标题。 -->
+        <h1 id="panel-title">任务列表</h1>
+        <p id="panel-sub">按结论筛选、批量下载报告；点「查看」在本页预览报告全文。</p>
+      </div>
+      <div class="card" id="panel">
+      <div class="filters" id="filters">
+        <label for="fstatus" style="margin:0">结论</label>
+        <select id="fstatus">
+          <option value="all">全部</option>
+          <!-- 第一项就该是"要看的"：日常翻列表的目的就是找有问题的那些，
+               「有问题+仅疑似」一次把两类都留下，省掉在两次筛选之间来回切。 -->
+          <option value="issues">有问题 + 仅疑似</option>
+          <option value="high">有问题</option>
+          <option value="suspect">仅疑似</option>
+          <option value="clean">未发现问题</option>
+          <option value="running">进行中</option>
+          <option value="failed">失败 / 跳过 / 已停止</option>
+        </select>
+        <label for="fsize" style="margin:0">每页</label>
+        <select id="fsize">
+          <option value="20">20 条</option>
+          <option value="50">50 条</option>
+          <option value="100">100 条</option>
+        </select>
+        <span class="cnt" id="fcnt"></span>
+      </div>
+      <div class="bulkbar" id="bulkbar">
+        <span>已选 <b id="bulkcount">0</b> 项<span class="scope" id="bulkscope"></span></span>
+        <button class="bdl" id="bulkdl">批量下载报告</button>
+        <button class="bdl alt" id="bulkdlbrief">批量下载简版</button>
+        <button class="bdel" id="bulkdel">批量删除</button>
+        <button class="bghost" id="bulkallrep">全选已完成</button>
+        <button class="bghost" id="bulkall">全选可删</button>
+        <button class="bghost" id="bulkclear">取消选择</button>
+      </div>
+      <div class="list" id="list"><div class="muted">加载中…</div></div>
+      <div class="pager" id="pager"></div>
+      <div class="mini" id="preview" style="display:none">
+        <iframe id="frame" style="width:100%;height:100%;border:0"></iframe>
+      </div>
+      </div>
+    </section>
+
+    <!-- ========== 页面四：手机管理 ========== -->
+    <section class="page" id="page-devices">
+      <div class="phead">
+        <h1>手机管理</h1>
+        <p>登记用于动态采集的测试机。添加时会自动识别插在电脑上的设备、检查 USB 调试与
+           root、部署 frida-server 并跑一遍自检；移除只是把设备从平台登记里去掉，
+           不会改动手机本身。</p>
+      </div>
+
+      <div class="card">
+        <div class="dmtop">
+          <div>
+            <h2 class="dh">已登记测试机<span class="cnt" id="reg-count">0</span></h2>
+            <div class="tip sm" id="reg-tip">正在读取登记簿…</div>
+          </div>
+          <button id="dev-add">+ 添加手机</button>
+        </div>
+        <div class="reglist" id="reg-list"><div class="muted">加载中…</div></div>
+      </div>
+
+      <!-- 插着但没登记的机器：单独一块。混进上面那张表会让"已登记"失去意义，
+           而完全不显示又会让人以为"平台没认出我刚插的手机"。 -->
+      <div class="card" id="unmanaged-card" style="display:none;margin-top:16px;">
+        <div class="dmtop">
+          <div>
+            <h2 class="dh">已连接但未登记</h2>
+            <div class="tip sm">这些设备插在电脑上，但还没加入平台。
+              未登记的设备不会出现在「新建任务」的测试机下拉框里。</div>
+          </div>
+        </div>
+        <div class="reglist" id="unmanaged-list"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <h3><span id="modal-title">任务日志</span><button id="modal-close">关闭</button></h3>
+    <pre id="modal-body"></pre>
+  </div>
+</div>
+
+<!-- 添加测试机向导。内容全由 JS 渲染：三个阶段（选设备 / 跑步骤 / 结果）
+     共用同一个壳，比做三个弹窗少一堆显隐状态。 -->
+<div class="wiz" id="wiz">
+  <div class="box">
+    <div class="wh">
+      <b id="wiz-title">添加测试机</b>
+      <button class="wx" id="wiz-close">关闭</button>
+    </div>
+    <div class="wbody" id="wiz-body"></div>
+    <div class="wfoot" id="wiz-foot"></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let mode = "upload", file = null, pollTimer = null;
+
+// ---------- 页面路由 ----------
+// 三页：系统状态（默认）/ 新建任务 / 任务列表。
+// 用 hash 而不是纯内存变量：刷新页面、把 #/jobs 发给同事，都要落在同一页。
+// 但菜单点击走 replaceState（不新增历史）—— 菜单不是"浏览记录"，
+// 连点三次菜单再按后退要退三步，是单页应用里最恼人的一类体验。
+const PAGES = {status: 1, devices: 1, new: 1, jobs: 1};
+let CUR_PAGE = "";
+function hashPage(){
+  const h = String(location.hash || "").replace(/^#\/?/, "").trim();
+  return PAGES[h] ? h : "status";
+}
+function go(name, keepHash){
+  if (!PAGES[name]) name = "status";
+  const first = !CUR_PAGE;
+  CUR_PAGE = name;
+  document.querySelectorAll(".page").forEach(p => {
+    p.classList.toggle("on", p.id === "page-" + name);
+  });
+  document.querySelectorAll("#nav a").forEach(a => {
+    a.classList.toggle("on", a.dataset.page === name);
+  });
+  if (!keepHash) {
+    try { history.replaceState(null, "", "#/" + name); }
+    catch (e) { location.hash = "#/" + name; }
+  }
+  // 进状态页顺手刷一次设备（10 秒轮询仍在跑，这里只是让刚插上的机器立刻出现）
+  if (name === "status" && typeof loadDevices === "function") {
+    try { loadDevices(false); } catch (e) {}
+    try { loadAiProfiles(); } catch (e) {}
+  }
+  // 手机管理页每次进来都**强制**刷一次登记簿：刚移除一台、刚添加完，
+  // 切回来就该看到最新状态，而不是等 10 秒轮询。
+  if (name === "devices" && typeof loadRegistry === "function") {
+    try { loadRegistry(true); } catch (e) {}
+  }
+  // 从别的页切回列表时重画一次：隐藏期间轮询也在更新数据，
+  // 但批量条的显隐、分页条这些只在 render 里算。
+  // 没有数据时不画 —— 刚提交完就跳过来时 JOBS 还是空的，
+  // 画一次会闪出"暂无任务"，比让它多停 1 秒"加载中"更容易被误读。
+  if (name === "jobs" && JOBS && JOBS.length && typeof render === "function") {
+    try { render(JOBS, LAST_STATS); } catch (e) {}
+  }
+  // 切页后回到顶部：从长表单切到列表还停在中段，会看不到表头。
+  if (!first) window.scrollTo(0, 0);
+}
+document.querySelectorAll("#nav a").forEach(a => {
+  a.onclick = e => {
+    e.preventDefault();
+    // 已经在看某份报告时再点「任务列表」，意思是"回到列表"，
+    // 而不是把报告原样留在屏幕上 —— 否则这个菜单项点了像没反应。
+    if (a.dataset.page === "jobs" && lastReport && $("#back")) $("#back").click();
+    go(a.dataset.page);
+  };
+});
+// 手动改地址 / 前进后退：hash 已变，别再写回去（keepHash=true）
+window.addEventListener("hashchange", () => go(hashPage(), true));
+
+// ---------- Tab 切换 ----------
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("on"));
+  t.classList.add("on");
+  mode = t.dataset.mode;
+  $("#pane-upload").style.display = mode === "upload" ? "" : "none";
+  $("#pane-url").style.display = mode === "url" ? "" : "none";
+  $("#pane-store").style.display = mode === "store" ? "" : "none";
+  hideErr();
+});
+
+// 商店链接输入框：实时显示"将提交几条"。
+// 只做计数提示，真正的校验（是不是受支持的市场、有没有重复）在服务端做 ——
+// 两边各写一套判断，迟早会对不上。
+const storeBox = $("#store_urls");
+function countStoreUrls(){
+  const n = storeBox.value.split("\n")
+    .map(s => s.trim()).filter(s => s && !s.startsWith("#")).length;
+  $("#store_count").textContent = n ? ("将提交 " + n + " 条链接，排队依次检测") : "";
+}
+storeBox.addEventListener("input", countStoreUrls);
+
+// ---------- 文件选择 ----------
+const drop = $("#drop"), fileInput = $("#file");
+drop.onclick = () => fileInput.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => {
+  e.preventDefault(); drop.classList.remove("over");
+  if (e.dataTransfer.files.length) pick(e.dataTransfer.files[0]);
+};
+fileInput.onchange = e => { if (e.target.files.length) pick(e.target.files[0]); };
+function pick(f){
+  if (!/\.apk$/i.test(f.name)) return showErr("请选择 .apk 文件");
+  file = f;
+  $("#fname").textContent = "已选择：" + f.name + "（" + (f.size/1048576).toFixed(1) + " MB）";
+  hideErr();
+}
+function showErr(m){ const e=$("#err"); e.textContent=m; e.classList.add("on"); }
+function hideErr(){ $("#err").classList.remove("on"); }
+
+// AI 连接测试按钮已随「模型服务改到系统状态页」一起移走（2026-11-12）：
+// 现在每套配置在列表里各有一次「测试」，测的就是它自己的地址/模型/密钥，
+// 不会再出现"表单里的值和服务端实际用的一致不一致"这种问题。
+
+
+// 1~4 档的采集时长由档位决定：置灰而不是悄悄忽略，
+// 否则会出现"我明明填了 600 秒，怎么跑了 900 秒"的困惑。
+// 同时把"这一档会做什么"写在输入框的悬停提示里 —— 档位的差别不只是时长，
+// 还有「点不点同意」「登不登录」「只到几层」，光看下拉框一行字很容易选错。
+const DEPTH_FIXED = {
+  pre:     "1 档「仅同意前」：采集 150 秒，取到政策正文即收工，不点同意、不做功能遍历",
+  light:   "2 档「同意后浅测」：采集 300 秒，不登录，只点到二级目录",
+  deep:    "3 档「深度」：采集 900 秒，可尝试微信快捷登录 / 手机号验证码登录",
+  extreme: "4 档「极致」：采集 3600 秒，尽可能把各层功能走全",
+};
+// 输入框置灰时把它**填成这一档的真实时长**。
+// 只置灰不改值，会出现"灰框里写着 90 秒、实际跑了 300 秒"——
+// 这正是用户上次抱怨的那种"看着像，其实不是"。
+const DEPTH_SEC = {pre: 150, light: 300, deep: 900, extreme: 3600};
+function syncDepthTip() {
+  const v = $("#depth").value || "normal";
+  const fixed = DEPTH_FIXED[v];
+  const el = $("#duration");
+  el.disabled = !!fixed;
+  el.style.opacity = fixed ? "0.45" : "1";
+  el.title = fixed || "";
+  if (fixed && DEPTH_SEC[v]) el.value = DEPTH_SEC[v];
+  // 1、2 档在采集层被强制"不登录"：把手机号框与登录开关一起置灰，
+  // 避免"勾着登录、填了号码，跑起来却没登录"的困惑。
+  const lp = $("#login_phone");
+  const lt = $("#login_test");
+  if (lp) {
+    const noLogin = (v === "pre" || v === "light");
+    lp.disabled = noLogin;
+    lp.style.opacity = noLogin ? "0.45" : "1";
+    lp.title = noLogin ? "本档不登录（只覆盖游客可见范围）" : "";
+    if (lt) {
+      lt.disabled = noLogin;
+      // 换回可登录档时恢复勾选，不然"切到 2 档再切回来"会悄悄变成不登录
+      if (!noLogin && !lt.dataset.userOff) lt.checked = true;
+      // 置灰的是"勾选框 + 它的文字"这一整行；没有父节点时（测试用的假 DOM）
+      // 只跳过置灰，不能让整页脚本挂掉 —— syncDepthTip 一抛异常，
+      // 后面的提交逻辑就再也绑不上了。
+      const _box = lt.parentElement;
+      if (_box && _box.style) _box.style.opacity = noLogin ? "0.45" : "1";
+      lt.title = noLogin ? "本档不登录；要登录请选 3、4 档" : "";
+    }
+  }
+}
+$("#depth").addEventListener("change", syncDepthTip);
+// 记下"用户亲手关过登录"，否则从 3 档切到 2 档再切回 3 档时，
+// syncDepthTip 会把勾选悄悄恢复 —— 那就成了"用户的选择被程序改回去"。
+$("#login_test").addEventListener("change", (e) => {
+  e.target.dataset.userOff = e.target.checked ? "" : "1";
+});
+syncDepthTip();
+
+// ---------- 测试机 ----------
+// ★ 为什么不自动选：设备是报告里的一条证据。
+//   "这台机测的"必须由人点出来，程序替人选等于替他签字 —— 而且猜错的后果
+//   不是报错，是**在 A 机上测完、报告写着 B 机的环境**，从报告上查不出来。
+//   2026-11-11 用户明确要求："不要写哪个手机是默认，必须让用户自己选择。"
+//   所以哪怕只插着一台，下拉框也停在"（请选择测试机）"，提交时明确拦下。
+//   状态页设备卡上的「用这台」是**用户亲手点**的，不算默认值。
+//   ★ 也**不记 localStorage**：原来"记住上次选的那台"本身就是一种默认值，
+//     换个任务还沿用上一次的选择，等于让人在没看的情况下默认了设备。
+let DEVICES = [], DEV_SIG = "", DEV_TS = 0;
+
+// 标签跟着真实状态走（原来写死"默认 Android 10 那台"，登记簿空了就是假话）。
+// 必须是页面级函数：下拉框的 change 只改 value，不会重跑 loadDevices，
+// 放在 loadDevices 内部的话"选完标签还写着必须选"（CDP 抓到过）。
+function setDevLabel(pick){
+  const lbl = $("#devlabel");
+  if (!lbl) return;
+  const shown = DEVICES.filter(d => d.managed);
+  const online = shown.filter(d => d.state === "device");
+  const d = shown.find(x => x.serial === pick);
+  if (!shown.length) {
+    lbl.textContent = "（还没有添加测试机，动态采集需要先添加一台）";
+  } else if (!online.length) {
+    lbl.textContent = "（登记了 " + shown.length + " 台，但此刻一台都没连上）";
+  } else if (!d || d.state !== "device") {
+    lbl.textContent = "（必须自己选一台；选定后整个任务都在这一台上跑）";
+  } else {
+    lbl.textContent = "（当前：" + (d.alias || d.model || d.serial)
+      + " · 整个任务都在这一台上跑，可随时切换）";
+  }
+}
+
+async function loadDevices(force){
+  const sel = $("#device"), tip = $("#devtip");
+  try {
+    const r = await fetch("/api/devices" + (force ? "?refresh=1" : "")).then(x => x.json());
+    DEVICES = (r && r.devices) || [];
+    // 服务端仍会返回 preferred/default（config.yaml 里的历史值），但**界面不再用它们选中**：
+    // 设备必须由人点出来，见"测试机"一节开头的注释。
+    const regN = (r && r.registry_count) || 0;
+    const keep = sel.value;
+    // ★ 登记簿是唯一口径（2026-11-11 用户报的"两处不一致"）。
+    //   原来"一台都没登记就退回列出全部已连接设备"是我为了兼容加的回退，
+    //   结果：把两台都移除了，下拉框里又冒出两台、状态页还写"2 台可用/已连接"。
+    //   移除这个动作看起来没生效 —— 因为它确实没生效。
+    //   现在一律只列已登记的：没登记就只剩一句"去添加手机"，行为处处一致。
+    const shown = DEVICES.filter(d => d.managed);
+    const sig = DEVICES.map(d => d.serial + ":" + d.state + ":" + (d.managed ? 1 : 0)
+                                 + ":" + (d.usable ? 1 : 0)).join("|") + "#" + regN;
+    const rebuild = sig !== DEV_SIG;
+    if (!DEVICES.length) {
+      DEV_SIG = sig;
+      sel.innerHTML = '<option value="">（未检测到设备）</option>';
+      sel.disabled = true;
+      if (tip) tip.innerHTML = '没有检测到任何设备。请检查 USB 数据线、手机上是否点了「允许 USB 调试」。';
+      setDevLabel("");
+      renderDevCards();
+      return;
+    }
+    if (!shown.length) {
+      DEV_SIG = sig;
+      const n = DEVICES.length;
+      sel.innerHTML = '<option value="">（还没有添加测试机）</option>';
+      sel.disabled = true;
+      if (tip) {
+        tip.innerHTML = '检测到 ' + n + ' 台设备插在电脑上，但都没有添加到平台（未登记不参与任务）。'
+          + '去「手机管理」点「添加手机」，或点下面设备卡上的「添加到平台」。';
+      }
+      setDevLabel("");
+      renderDevCards();
+      return;
+    }
+    const onlineShown = shown.filter(d => d.state === "device");
+    if (!onlineShown.length) {
+      DEV_SIG = sig;
+      sel.innerHTML = '<option value="">（没有已登记的测试机在线）</option>';
+      sel.disabled = true;
+      if (tip) {
+        tip.innerHTML = '登记了 ' + regN + ' 台测试机，但此刻一台都没连上。'
+          + '去「手机管理」看每台的状态，或把手机插上 USB。';
+      }
+      setDevLabel(sel.value);
+      renderDevCards();
+      return;
+    }
+    if (rebuild) {
+      // 第一项永远是占位，且不可提交（value=""）。这样"看起来已经选好了"
+      // 这件事不会发生 —— 用户必须亲手点一次。
+      sel.innerHTML = '<option value="">（请选择测试机）</option>';
+      shown.forEach(d => {
+        const o = document.createElement("option");
+        o.value = d.serial;
+        const tag = (d.tags && d.tags.length) ? " · " + d.tags.join(" · ") : "";
+        o.textContent = (d.alias || d.model || d.serial) + " · Android " + (d.android || "?")
+                      + " · " + d.serial + tag;
+        if (d.state !== "device") o.disabled = true;
+        sel.appendChild(o);
+      });
+    }
+    sel.disabled = false;
+    // 重建后 value 会丢。只有"用户刚选的那台此刻仍在选项里"才恢复 ——
+    // 那不是默认值，是他自己的选择被一次状态刷新冲掉了（例如 frida 刚起好，
+    // sig 变了触发重建）。其余情况一律停在占位项上，逼出一次明确的选择。
+    if (rebuild && keep && shown.some(d => d.serial === keep && d.state === "device")) {
+      sel.value = keep;
+    }
+    DEV_SIG = sig;
+    renderDevCards();
+    syncDeviceTip();
+    applyDevicePhone();
+    if (shown.length > 1) sel.dataset.multi = "1"; else delete sel.dataset.multi;
+    setDevLabel(sel.value);
+  } catch (e) {
+    sel.innerHTML = '<option value="">（读取设备失败）</option>';
+    if (tip) tip.textContent = "读取设备清单失败：" + e;
+  }
+}
+
+// 顶部每台机一张卡。连接情况（state/note）与就绪情况（root/frida/占用）分开写：
+// "插着但没授权"和"授权了但没 root"是两种完全不同的毛病，合成一句话就分不清。
+//
+// ★ 2026-11-11 收敛口径：**汇总只统计已登记的**。
+//   原来按 adb 里"有几台"统计，于是把两台都从手机管理里移除之后，
+//   这张汇总还写着"2 台已连接 · 2 台就绪" —— 平台明明已经不用它们了。
+//   未登记的仍然显示（那是硬件事实，藏着会让人以为平台没认出来），
+//   但单独一段、并且不参与"就绪/可用"的统计。
+function renderDevCards(){
+  const box = $("#devgrid"), sum = $("#envsum");
+  if (!box) return;
+  const sel = $("#device");
+  const managed = DEVICES.filter(d => d.managed);
+  const online = managed.filter(d => d.state === "device");
+  const ready = online.filter(d => d.usable).length;
+  const unreg = DEVICES.filter(d => !d.managed);
+  if (sum) {
+    let s;
+    if (!managed.length) {
+      s = DEVICES.length
+        ? "还没有添加测试机（检测到 " + DEVICES.length + " 台已连接，未登记）"
+        : "未检测到测试机";
+    } else {
+      s = online.length + " 台已连接 · " + ready + " 台就绪"
+        + (managed.length > online.length ? " · " + (managed.length - online.length) + " 台未连接" : "")
+        + (unreg.length ? " · 另有 " + unreg.length + " 台未登记（不参与任务）" : "")
+        + (online.some(d => d.busy) ? " · 有任务占用中" : " · 空闲");
+    }
+    sum.textContent = s;
+  }
+  if (!DEVICES.length) {
+    box.innerHTML = '<div class="devcard bad"><div class="dn">未检测到测试机</div>'
+      + '<div class="ds">请检查 USB 数据线、手机上是否点「允许 USB 调试」，然后点右上「全部自检」。</div></div>';
+    return;
+  }
+  const cards = managed.map(d => devCardHtml(d, sel));
+  if (unreg.length) {
+    // 未登记的不是错误，只是"平台还没接管它"。用中性样式 + 明确的下一步，
+    // 不套 .bad（红框会让人以为这台机坏了）。
+    // ★ 分隔说明单独用 .devsep，别复用 .devcard —— 复用会让"有几张未登记卡"
+    //   这类统计把说明条也算进去，界面上也很难说清它是卡还是说明。
+    cards.push('<div class="devsep" style="grid-column:1/-1">'
+      + '以下设备插在电脑上，但还没有添加到平台，<b>不会出现在「新建任务」的测试机里、也不参与任务</b>。'
+      + '点每台的「添加到平台」即可。</div>');
+    unreg.forEach(d => cards.push(devCardHtml(d, sel)));
+  }
+  box.innerHTML = cards.join("");
+}
+
+function devCardHtml(d, sel){
+  const chips = [];
+  const online = d.state === "device";
+  chips.push(online ? '<span class="dchip g">已连接</span>'
+                    : '<span class="dchip r">' + esc(d.state === "unauthorized" ? "未授权" : "未连接") + '</span>');
+  if (!d.managed) {
+    // 未登记：只说"没登记、不参与任务"，不给"空闲/就绪"这类暗示可用的词。
+    chips.push('<span class="dchip n">未登记 · 不参与任务</span>');
+  } else if (online) {
+    // "su 文件存在"与"我们真的能提权"是两件事：Magisk 可以设成每次询问，
+    // 那种机器 su 在、但采集会卡在授权弹窗上。所以没实际验证过就只写"su 可用"。
+    if (d.registered_root_ok || d.root_verified) chips.push('<span class="dchip g">已 root（实测）</span>');
+    else if (d.root) chips.push('<span class="dchip y">su 可用（未验证）</span>');
+    else chips.push('<span class="dchip r">未 root</span>');
+    chips.push(d.frida_ok
+      ? '<span class="dchip g">frida-server ' + esc(d.frida || "运行中") + '</span>'
+      : '<span class="dchip y">frida 未启动</span>');
+    chips.push(d.busy
+      ? '<span class="dchip n">占用中 · ' + esc(d.busy_job || "其他任务") + '</span>'
+      : (d.usable ? '<span class="dchip g">空闲</span>' : '<span class="dchip y">现在不能跑</span>'));
+  }
+  const isSel = sel && sel.value === d.serial;
+  const bad = d.managed && (!online || !d.root);
+  return '<div class="devcard' + (bad ? " bad" : "") + (!d.managed ? " unreg" : "")
+    + (isSel ? " sel" : "") + '">'
+    + '<div class="dn">' + esc(d.alias || d.model || d.serial)
+      + (isSel ? '<span class="dchip n">本次使用</span>' : '') + '</div>'
+    + '<div class="ds">' + esc(d.serial)
+      + (d.android ? " · Android " + esc(d.android) + (d.sdk ? "（API " + esc(d.sdk) + "）" : "") : "")
+      + (d.abi ? " · " + esc(d.abi) : "") + '</div>'
+    + '<div class="chips">' + chips.join("") + '</div>'
+    + (d.note ? '<div class="dnote">' + esc(d.note) + '</div>' : '')
+    + '<div class="dacts">'
+      + (d.managed && online && !isSel ? '<a href="#" data-use="' + esc(d.serial) + '">用这台</a>' : '')
+      + (online ? '<a href="#" data-check="' + esc(d.serial) + '">单独自检</a>' : '')
+      // 未登记的机器不会出现在下拉框里，所以这里给一条明确入口 ——
+      // 否则人在状态页看到它，却在选机时找不到，只能猜"是不是平台没认出来"。
+      + (!d.managed ? '<a href="#" data-adddev="' + esc(d.serial) + '">添加到平台</a>' : '')
+    + '</div></div>';
+}
+
+function syncDeviceTip(){
+  const sel = $("#device"), tip = $("#devtip");
+  if (!tip) return;
+  const d = DEVICES.find(x => x.serial === sel.value);
+  if (!d) {
+    // 没选设备时不能说"—"（看起来像默认状态正常），要明说还差一步。
+    const n = DEVICES.filter(x => x.managed && x.state === "device").length;
+    tip.textContent = n
+      ? ("请先在上面选一台测试机（" + n + " 台已登记在线）。"
+         + "报告里的设备信息取自你选的那台，程序不会替你挑。")
+      : "—";
+    return;
+  }
+  const bits = [];
+  // 在线台数也只按已登记的口径说，否则"下拉框里只有 1 台，提示却说 2 台在线"。
+  bits.push(DEVICES.filter(x => x.managed && x.state === "device").length + " 台在线");
+  // root 的结论由 note 给（它会写明是"接入时已验证 · 时间"还是"本轮未复验"），
+  // 这里只在**没有证据**时说一句，别把同一句话拼两遍：
+  // 2026-11-11 的截图上曾同时出现"已 root（实测提权成功）"和
+  // "su 可用（尚未实际提权验证）"，自相矛盾。
+  if (!d.root) bits.push("未 root（动态采集不可用）");
+  else if (!d.registered_root_ok && !d.root_verified)
+    bits.push("su 可用（尚未实际提权验证，开跑前自检会验证）");
+  if (d.frida_ok) bits.push("frida-server " + d.frida + " 运行中");
+  else bits.push("frida-server 未运行（开跑前自动启动）");
+  if (d.busy) {
+    // 这里必须说清"排队"而不是"等待"：任务是进队列，不是卡在这里干等。
+    bits.push("另一任务 " + (d.busy_job || "") + " 正在用这台，本任务会进入排队，"
+              + "轮到时自动切到这台开跑");
+  }
+  if (d.note) bits.push(d.note);
+  tip.textContent = bits.join(" · ");
+}
+
+// ---------- 手机号随测试机切换 ----------
+// 每台测试机插的是自己的卡。拿 A 机的号去登录 B 机上的 App，验证码根本收不到，
+// 而现象只是"登录超时"—— 看不出是号码错了，很容易被当成 App 的问题写进报告。
+// 所以选机就换号。
+// 但**用户手填的号绝不能覆盖**：那可能是有意指定的测试号。
+// 判据：输入框非空、且不等于"上次自动填进去的值" → 认为是他填的，不动。
+let AUTO_PHONE = "";
+function applyDevicePhone(){
+  const sel = $("#device"), inp = $("#login_phone"), tip = $("#phonetip");
+  if (!sel || !inp) return;
+  const d = DEVICES.find(x => x.serial === sel.value);
+  // 还没选机器：不能把上一步留下的号当成"这台机的号"提交上去。
+  // 手填的号仍然保留（那是用户有意指定的），只清掉程序自动填的那种。
+  if (!d) {
+    if (inp.value && inp.value !== AUTO_PHONE) {
+      if (tip) tip.textContent = "手机号是你手填的，保留不动；选定测试机后可核对是否匹配该机的卡";
+      return;
+    }
+    inp.value = "";
+    AUTO_PHONE = "";
+    if (tip) tip.textContent = "先选测试机，号码会随机器自动切换（每台机插的是自己的卡）";
+    return;
+  }
+  const want = d.phone || "";
+  if (inp.value && inp.value !== AUTO_PHONE) {
+    if (tip) tip.textContent = "手机号是你手填的，未随测试机切换（清空后会自动用该机登记的号码）";
+    return;
+  }
+  if (!want) {
+    inp.value = "";
+    AUTO_PHONE = "";
+    if (tip) tip.textContent = "这台测试机没有登记手机号，请手动填写（不填则不登录）";
+    return;
+  }
+  inp.value = want;
+  AUTO_PHONE = want;
+  if (tip) {
+    tip.textContent = (d.model || d.serial) + " 登记的号码 · 换测试机会自动切换";
+  }
+}
+$("#device").addEventListener("change", () => {
+  // 选好了就把"请先选一台"那条错误收掉：留着会让人以为还没解决。
+  if (typeof hideErr === "function") hideErr();
+  setDevLabel($("#device").value);
+  renderDevCards();
+  syncDeviceTip();
+  applyDevicePhone();
+});
+$("#devrefresh").onclick = () => loadDevices(true);
+$("#devgrid").addEventListener("click", async (e) => {
+  const use = e.target.getAttribute && e.target.getAttribute("data-use");
+  const chk = e.target.getAttribute && e.target.getAttribute("data-check");
+  const add = e.target.getAttribute && e.target.getAttribute("data-adddev");
+  if (add) {
+    e.preventDefault();
+    wizShow(true);
+    await wizPick(add);
+    return;
+  }
+  if (use) {
+    e.preventDefault();
+    $("#device").value = use;
+    if (typeof hideErr === "function") hideErr();
+    setDevLabel(use);
+    renderDevCards();
+    syncDeviceTip();
+    applyDevicePhone();
+    return;
+  }
+  if (chk) {
+    e.preventDefault();
+    if (e.target.dataset.busy === "1") return;
+    e.target.dataset.busy = "1";
+    const old = e.target.textContent;
+    e.target.textContent = "自检中…";
+    try {
+      const r = await fetch("/api/env/preflight?device=1&fix=1&serial="
+                            + encodeURIComponent(chk)).then(x => x.json());
+      const bad = (r.checks || []).filter(c => !c.ok && c.fatal);
+      toast(r.ok ? (chk + " 自检通过" + (r.elapsed ? "（" + r.elapsed + "s）" : ""))
+                 : ("自检未通过：" + (bad.map(c => c.title).join("；") || r.error || "未知原因")));
+    } catch (err) {
+      toast("自检请求失败：" + err);
+    }
+    e.target.textContent = old;
+    delete e.target.dataset.busy;
+    loadDevices(true);
+  }
+});
+loadDevices(false);
+// 设备占用状态会随任务起落变化，界面得自己跟上：
+// 10 秒一次（服务端有 6 秒缓存，不会每次都真去 adb 探一遍）。
+setInterval(() => {
+  if (document.hidden) return;
+  loadDevices(false);
+}, 10000);
+
+// ==================== 手机管理（2026-11-11） ====================
+// 三件事：看登记簿 / 添加（向导）/ 移除。
+//
+// 为什么添加要做成"向导 + 轮询"而不是一个按钮直接 POST：
+//   接入要等 USB 授权（可能一分多钟）、push 几十 MB 的 frida-server、
+//   再启动、连接、dump 界面。同步请求会超时，而用户看不到任何过程 ——
+//   那不是"等待"，是"以为卡死了"。这里 POST 立刻拿到会话 id，
+//   然后每秒拉一次步骤状态，每一步都写明在做什么。
+let REG = [], REG_UNMANAGED = [], REG_COUNT = 0;
+const WIZ = {stage: "", serial: "", sid: "", timer: null, allowDl: true};
+
+function fmtAgo(ts){
+  if (!ts) return "";
+  const d = Math.max(0, (Date.now() / 1000) - ts);
+  if (d < 90) return "刚刚";
+  if (d < 3600) return Math.round(d / 60) + " 分钟前";
+  if (d < 86400) return Math.round(d / 3600) + " 小时前";
+  return Math.round(d / 86400) + " 天前";
+}
+function fmtDate(ts){
+  if (!ts) return "";
+  const d = new Date(ts * 1000), p = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate())
+       + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+
+async function loadRegistry(force){
+  try {
+    const r = await fetch("/api/devices/registry" + (force ? "?t=" + Date.now() : ""))
+              .then(x => x.json());
+    if (!r || !r.ok) throw new Error((r && r.error) || "读取登记簿失败");
+    REG = r.devices || [];
+    REG_UNMANAGED = r.unmanaged || [];
+    REG_COUNT = r.registry_count || REG.length;
+    renderRegistry();
+  } catch (e) {
+    const box = $("#reg-list");
+    if (box) box.innerHTML = '<div class="muted">读取失败：' + esc(String(e.message || e)) + '</div>';
+  }
+}
+
+function renderRegistry(){
+  const box = $("#reg-list"), ubox = $("#unmanaged-list");
+  const cnt = $("#reg-count"), tip = $("#reg-tip"), nav = $("#nav-dev");
+  if (cnt) cnt.textContent = String(REG.length);
+  const usable = REG.filter(d => d.usable).length;
+  if (nav) nav.textContent = usable ? String(usable) : "";
+  if (tip) {
+    tip.textContent = !REG.length
+      ? "还没有登记任何测试机。点右上「添加手机」，平台会自动识别插在电脑上的设备、"
+        + "检查调试与 root，并部署 frida-server。"
+      : (REG.length + " 台已登记 · " + usable + " 台此刻可用"
+         + (REG.length > usable ? " · 其余的原因见下方每台设备的说明" : "")
+         + (REG_COUNT ? "" : ""));
+  }
+  if (!box) return;
+  if (!REG.length) {
+    box.innerHTML = '<div class="muted" style="padding:8px 2px">登记簿是空的。'
+      + '动态采集必须先添加至少一台测试机；未登记的设备即使插在电脑上也不会被平台使用。</div>';
+  } else {
+    box.innerHTML = REG.map(regRow).join("");
+  }
+  if (ubox) {
+    $("#unmanaged-card").style.display = REG_UNMANAGED.length ? "" : "none";
+    ubox.innerHTML = REG_UNMANAGED.map(u => {
+      const chips = [];
+      chips.push(u.state === "device"
+        ? '<span class="dchip g">已连接</span>'
+        : '<span class="dchip r">' + esc(u.state === "unauthorized" ? "未授权" : "未连接") + '</span>');
+      if (u.state === "device") {
+        chips.push(u.su ? '<span class="dchip y">su 可用</span>'
+                        : '<span class="dchip r">未 root</span>');
+        chips.push(u.frida_ok ? '<span class="dchip g">frida 运行中</span>'
+                              : '<span class="dchip y">frida 未启动</span>');
+      }
+      if (u.busy) chips.push('<span class="dchip n">占用中</span>');
+      return '<div class="regrow"><div class="rg-main">'
+        + '<div class="rg-name">' + esc(u.model || u.serial)
+        + '<span class="rg-serial">' + esc(u.serial) + '</span></div>'
+        + '<div class="rg-meta">' + (u.android ? "Android " + esc(u.android) : "")
+        + (u.sdk ? "（API " + esc(u.sdk) + "）" : "") + (u.abi ? " · " + esc(u.abi) : "")
+        + '</div><div class="rg-chips">' + chips.join("") + '</div></div>'
+        + '<div class="rg-acts"><button data-enroll="' + esc(u.serial) + '">添加</button></div>'
+        + '</div>';
+    }).join("");
+  }
+}
+
+function regRow(d){
+  const chips = [];
+  chips.push(d.online
+    ? '<span class="dchip g">已连接</span>'
+    : '<span class="dchip n">未连接</span>');
+  if (d.online) {
+    chips.push(d.root_ok
+      ? '<span class="dchip g">接入时已验证 root</span>'
+      : '<span class="dchip r">' + (d.degraded ? "仅登记（无 root）" : "root 未通过") + '</span>');
+    if (d.su) chips.push('<span class="dchip y">su 可用</span>');
+    else chips.push('<span class="dchip r">su 不可用</span>');
+    chips.push(d.frida_ok
+      ? '<span class="dchip g">frida ' + esc(d.frida || "运行中") + '</span>'
+      : '<span class="dchip y">frida 未启动</span>');
+    if (d.busy) chips.push('<span class="dchip n">占用中 · ' + esc(d.busy_job || "任务") + '</span>');
+  }
+  if (d.phone) chips.push('<span class="dchip">☎ ' + esc(d.phone) + '</span>');
+
+  const meta = [];
+  meta.push(d.alias ? esc(d.model || d.serial) : esc(d.serial));
+  if (d.brand) meta.push(esc(d.brand));
+  if (d.android) meta.push("Android " + esc(d.android) + (d.sdk ? "（API " + esc(d.sdk) + "）" : ""));
+  if (d.abi) meta.push(esc(d.abi));
+  if (d.frida_ver) meta.push("frida " + esc(d.frida_ver));
+  const when = d.verified_at
+    ? ("上次接入验证：" + fmtDate(d.verified_at) + "（" + fmtAgo(d.verified_at) + "）")
+    : "从未成功接入过";
+  return '<div class="regrow' + (d.usable ? "" : " off") + '">'
+    + '<div class="rg-main">'
+    + '<div class="rg-name">' + esc(d.alias || d.model || d.serial)
+    + '<span class="rg-serial">' + esc(d.serial) + '</span></div>'
+    + '<div class="rg-meta">' + meta.join(" · ") + '<br>' + when + '</div>'
+    + '<div class="rg-chips">' + chips.join("") + '</div>'
+    + '<div class="rg-reason' + (d.usable ? "" : " bad") + '">'
+    + (d.note ? esc(d.note) + " · " : "") + esc(d.reason) + '</div>'
+    + '</div><div class="rg-acts">'
+    + '<button data-edit="' + esc(d.serial) + '">改信息</button>'
+    + '<button data-check="' + esc(d.serial) + '">自检</button>'
+    + '<button class="danger" data-del="' + esc(d.serial) + '">移除</button>'
+    + '</div></div>';
+}
+
+// ---------- 添加手机向导 ----------
+function wizShow(on){
+  const w = $("#wiz");
+  if (!w) return;
+  w.classList.toggle("on", !!on);
+  if (!on && WIZ.timer) { clearInterval(WIZ.timer); WIZ.timer = null; }
+}
+
+function wizClose(){
+  // 关闭只是关掉这个弹窗，**不中断**接入：线程还在后台跑，
+  // 跑完会自动出现在登记簿里。所以这里不提示"已取消"。
+  wizShow(false);
+  WIZ.stage = ""; WIZ.sid = "";
+}
+
+function wizStepHtml(s){
+  const ic = s.state === "ok" ? "" : (s.state === "fail" ? "" : "");
+  let body = '<div class="stt">' + esc(s.title) + '</div>';
+  if (s.detail) body += '<div class="sd">' + esc(s.detail) + '</div>';
+  if (s.state === "fail" && s.fix) body += '<div class="sf">建议：' + esc(s.fix) + '</div>';
+  return '<div class="st ' + esc(s.state) + '"><div class="ic"></div>'
+       + '<div>' + body + '</div></div>';
+}
+
+function wizRenderRun(r){
+  const steps = r.steps || [];
+  const doneN = steps.filter(s => s.state === "ok" || s.state === "fail").length;
+  let head = "";
+  if (r.state === "running") {
+    head = '<div class="wsum">正在接入 ' + esc(r.serial) + '：'
+         + doneN + " / " + steps.length + " 步完成（已用 " + (r.elapsed || 0) + " 秒）。"
+         + '如果手机弹出「允许 USB 调试」或 Magisk 的「授权请求」，请在手机上点允许 —— '
+         + '程序会等，不会判失败。</div>';
+  }
+  $("#wiz-body").innerHTML = head
+    + '<div class="steps">' + steps.map(wizStepHtml).join("") + '</div>';
+  const foot = $("#wiz-foot");
+  if (r.state === "running") {
+    foot.innerHTML = '<span class="hint">关闭这个窗口不会中断接入，完成后设备会自动出现在列表里。</span>'
+      + '<span class="grow"></span><button id="wiz-close2">关掉窗口</button>';
+    const b = $("#wiz-close2");
+    if (b) b.onclick = wizClose;
+  }
+}
+
+function wizRenderDone(r){
+  const steps = r.steps || [];
+  const bad = steps.filter(s => s.state === "fail");
+  let head;
+  if (r.state === "ok") {
+    if (r.degraded) {
+      head = '<div class="wsum warn"><b>已登记（功能受限）</b>：这台机的 root 没通过，'
+           + '按你的要求只登记了信息 —— 它不会出现在任务的测试机下拉框里，'
+           + '动态采集也用不了。root 修好后点「自检」或重新添加一次即可。</div>';
+    } else {
+      head = '<div class="wsum"><b>接入成功</b>：调试、root、frida-server、界面读取全部实测通过，'
+           + '已经加入登记簿（用时 ' + (r.elapsed || 0) + ' 秒）。</div>';
+    }
+  } else {
+    head = '<div class="wsum bad"><b>没有接入成功</b>：'
+         + esc(bad.length ? (bad[0].title + " — " + (bad[0].detail || "")) : (r.error || "未知原因"))
+         + '</div>';
+  }
+  $("#wiz-body").innerHTML = head
+    + '<div class="steps">' + steps.map(wizStepHtml).join("") + '</div>';
+  const foot = $("#wiz-foot");
+  if (r.state === "ok") {
+    foot.innerHTML = (r.degraded ? "" : '<button id="wiz-new">去新建任务</button>')
+      + '<span class="grow"></span><button id="wiz-done">完成</button>';
+    if ($("#wiz-new")) $("#wiz-new").onclick = () => { wizClose(); go("new"); };
+    $("#wiz-done").onclick = () => { wizClose(); loadRegistry(true); };
+  } else {
+    foot.innerHTML = '<span class="hint">修好上面的问题后再试一次；'
+      + '也可以直接关掉窗口，去「系统状态」看这台机的实时探测结果。</span>'
+      + '<span class="grow"></span><button id="wiz-retry">重试</button>'
+      + '<button id="wiz-done">关闭</button>';
+    $("#wiz-retry").onclick = () => wizStart(WIZ.serial);
+    $("#wiz-done").onclick = wizClose;
+  }
+}
+
+async function wizPoll(){
+  if (!WIZ.sid) return;
+  try {
+    const r = await fetch("/api/devices/enroll/" + encodeURIComponent(WIZ.sid))
+              .then(x => x.json());
+    // 注意：这里的 `ok` 是"HTTP 层请求成功"，与"接入是否成功"（succeeded）不同。
+    // 会话还在跑时 succeeded=false，不能据此判失败。
+    if (!r || r.ok === false) throw new Error((r && r.error) || "读取进度失败");
+    WIZ.last = r;
+    if (r.state === "running") { wizRenderRun(r); return; }
+    if (WIZ.timer) { clearInterval(WIZ.timer); WIZ.timer = null; }
+    wizRenderDone(r);
+    loadRegistry(true);
+    loadDevices(true);
+  } catch (e) {
+    if (WIZ.timer) { clearInterval(WIZ.timer); WIZ.timer = null; }
+    $("#wiz-body").innerHTML = '<div class="wsum bad">读取接入进度失败：'
+      + esc(String(e.message || e)) + '</div>'
+      + '<div class="tip sm">服务可能刚重启过（接入进度不会持久化）。'
+      + '直接去「系统状态」看这台机的实时状态，或重新添加一次。</div>';
+    $("#wiz-foot").innerHTML = '<span class="grow"></span><button id="wiz-done">关闭</button>';
+    $("#wiz-done").onclick = wizClose;
+  }
+}
+
+async function wizStart(serial){
+  const alias = ($("#wiz-alias") && $("#wiz-alias").value || "").trim();
+  const phone = ($("#wiz-phone") && $("#wiz-phone").value || "").replace(/[\s\-()（）]/g, "");
+  const allowDl = ($("#wiz-dl") && $("#wiz-dl").checked) ? "1" : "0";
+  WIZ.serial = serial; WIZ.stage = "run";
+  $("#wiz-title").textContent = "正在接入 " + serial;
+  $("#wiz-body").innerHTML = '<div class="wsum">已开始：正在检查 adb 连接与 USB 调试授权…</div>';
+  $("#wiz-foot").innerHTML = '<span class="hint">正在准备…</span>';
+  try {
+    const fd = new FormData();
+    fd.append("serial", serial);
+    fd.append("alias", alias);
+    fd.append("phone", phone);
+    fd.append("allow_download", allowDl);
+    const r = await fetch("/api/devices/enroll", {method: "POST", body: fd})
+              .then(x => x.json());
+    if (!r || r.ok === false) throw new Error((r && r.error) || "无法开始接入");
+    WIZ.sid = r.id;
+    wizRenderRun(r);
+    if (WIZ.timer) clearInterval(WIZ.timer);
+    WIZ.timer = setInterval(wizPoll, 1000);
+  } catch (e) {
+    $("#wiz-body").innerHTML = '<div class="wsum bad">' + esc(String(e.message || e)) + '</div>';
+    $("#wiz-foot").innerHTML = '<span class="grow"></span><button id="wiz-done">关闭</button>';
+    $("#wiz-done").onclick = wizClose;
+  }
+}
+
+async function wizPick(serial){
+  // 选设备阶段：列出现的全部 adb 设备（含已登记的）——
+  // 已登记的也需要"重新接入"（换了机器同序列号、root 修好了、frida 掉了）。
+  WIZ.stage = "pick"; WIZ.serial = serial || "";
+  $("#wiz-title").textContent = "添加测试机";
+  let devs = [];
+  try {
+    const r = await fetch("/api/devices?refresh=1").then(x => x.json());
+    devs = (r && r.devices) || [];
+  } catch (e) { devs = []; }
+  if (!devs.length) {
+    $("#wiz-body").innerHTML = '<div class="wsum bad">现在没检测到任何设备。</div>'
+      + '<div class="tip sm">请确认：① 数据线插的是数据口（不是充电线）；'
+      + '② 手机上「开发者选项 → USB 调试」已打开；'
+      + '③ 手机弹出的「允许 USB 调试」点了允许；'
+      + '④ 下拉通知栏里 USB 用途选「传输文件(MTP)」。做完点下面的「重新扫描」。</div>';
+    $("#wiz-foot").innerHTML = '<span class="grow"></span>'
+      + '<button id="wiz-rescan">重新扫描</button>';
+    $("#wiz-rescan").onclick = () => wizPick(WIZ.serial);
+    return;
+  }
+  const rows = devs.map(d => {
+    const chips = [];
+    chips.push(d.state === "device"
+      ? '<span class="dchip g">已连接</span>'
+      : '<span class="dchip r">' + esc(d.state === "unauthorized" ? "未授权" : esc(d.state)) + '</span>');
+    if (d.managed) chips.push('<span class="dchip n">已登记</span>');
+    if (d.busy) chips.push('<span class="dchip n">占用中</span>');
+    if (d.state === "device") {
+      chips.push(d.root ? '<span class="dchip y">su 可用</span>'
+                        : '<span class="dchip r">未 root</span>');
+    }
+    return '<div class="pick' + (d.serial === WIZ.serial ? " on" : "") + '"'
+      + ' data-pick="' + esc(d.serial) + '">'
+      + '<div class="pi"></div><div class="pt">'
+      + '<div class="pn">' + esc(d.model || d.serial)
+      + '<span class="rg-serial">' + esc(d.serial) + '</span></div>'
+      + '<div class="rg-meta">' + (d.android ? "Android " + esc(d.android) : "")
+      + (d.abi ? " · " + esc(d.abi) : "") + '</div>'
+      + '<div class="rg-chips" style="margin-top:6px">' + chips.join("") + '</div>'
+      + '</div></div>';
+  }).join("");
+  $("#wiz-body").innerHTML =
+    '<div class="tip sm" style="margin:0 0 10px">选择要添加的设备。'
+    + '下面列的是此刻 adb 能看到的全部设备；「已登记」的也可以重新接入一次。</div>'
+    + '<div class="picklist">' + rows + '</div>'
+    + '<label for="wiz-alias" style="margin-top:14px">备注名<span class="opt">'
+    + '（可选，比如「红米 K30」，留空就用机型名）</span></label>'
+    + '<input id="wiz-alias" placeholder="红米 K30 测试机" maxlength="40">'
+    + '<label for="wiz-phone">SIM 手机号<span class="opt">'
+    + '（可选，填了就在选这台机跑任务时自动带上）</span></label>'
+    + '<input id="wiz-phone" placeholder="13800000000" maxlength="20">'
+    + '<div class="chk" style="margin-top:12px"><input type="checkbox" id="wiz-dl" checked>'
+    + '<label for="wiz-dl">本机缺少匹配的 frida-server 时，允许联网从官方 release 下载'
+    + '<span class="opt">（内网环境可取消勾选，改为手工放到 tools/frida/）</span></label></div>';
+  $("#wiz-foot").innerHTML = '<span class="hint">接入会检查调试授权、root、'
+    + '部署 frida-server 并跑一遍界面自检，通常 20~60 秒。</span>'
+    + '<span class="grow"></span><button id="wiz-go">开始接入</button>';
+  $("#wiz-go").onclick = () => {
+    if (!WIZ.serial) { toast("请先选一台设备"); return; }
+    wizStart(WIZ.serial);
+  };
+  $("#wiz-body").querySelectorAll("[data-pick]").forEach(el => {
+    el.onclick = () => {
+      WIZ.serial = el.getAttribute("data-pick");
+      $("#wiz-body").querySelectorAll(".pick").forEach(x => x.classList.remove("on"));
+      el.classList.add("on");
+    };
+  });
+}
+
+$("#dev-add").onclick = () => { wizShow(true); wizPick(""); };
+$("#wiz-close").onclick = wizClose;
+
+// 管理页的四个动作（添加 / 改信息 / 自检 / 移除）。
+// 用委托而不是给每行绑 onClick：列表每次刷新都会重建，逐行绑等于每 10 秒泄漏一批监听器。
+$("#page-devices").addEventListener("click", async (e) => {
+  const el = e.target.closest("[data-enroll],[data-edit],[data-del],[data-check]");
+  if (!el) return;
+  e.preventDefault();
+  const enrollS = el.getAttribute("data-enroll");
+  const editS = el.getAttribute("data-edit");
+  const delS = el.getAttribute("data-del");
+  const chkS = el.getAttribute("data-check");
+
+  if (enrollS) {
+    const d = REG_UNMANAGED.find(x => x.serial === enrollS) || {};
+    wizShow(true);
+    WIZ.serial = enrollS;
+    await wizPick(enrollS);
+    if ($("#wiz-alias")) $("#wiz-alias").value = d.model || "";
+    return;
+  }
+  if (chkS) {
+    if (el.dataset.busy === "1") return;
+    el.dataset.busy = "1";
+    const old = el.textContent;
+    el.textContent = "自检中…";
+    try {
+      const r = await fetch("/api/env/preflight?device=1&fix=1&serial="
+                            + encodeURIComponent(chkS)).then(x => x.json());
+      const bad = (r.checks || []).filter(c => !c.ok && c.fatal);
+      toast(r.ok ? (chkS + " 自检通过" + (r.elapsed ? "（" + r.elapsed + "s）" : ""))
+                 : ("自检未通过：" + (bad.map(c => c.title).join("；") || r.error || "未知原因")));
+    } catch (err) {
+      toast("自检请求失败：" + err);
+    }
+    el.textContent = old;
+    delete el.dataset.busy;
+    loadRegistry(true);
+    loadDevices(true);
+    return;
+  }
+  if (editS) {
+    const d = REG.find(x => x.serial === editS) || {};
+    const alias = prompt("备注名（留空则用机型名）", d.alias || "");
+    if (alias === null) return;
+    const phone = prompt("SIM 手机号（留空表示不登记）", d.phone || "");
+    if (phone === null) return;
+    const note = prompt("备注（比如「只在测 Android 12 时用」）", d.note || "");
+    if (note === null) return;
+    const fd = new FormData();
+    fd.append("alias", alias.trim());
+    fd.append("phone", phone.replace(/[\s\-()（）]/g, ""));
+    fd.append("note", note.trim());
+    try {
+      const r = await fetch("/api/devices/" + encodeURIComponent(editS) + "/meta",
+                            {method: "POST", body: fd}).then(x => x.json());
+      if (!r || r.ok === false) throw new Error((r && r.error) || "更新失败");
+      toast("已更新");
+      loadRegistry(true);
+      loadDevices(true);
+    } catch (err) {
+      toast("更新失败：" + (err.message || err));
+    }
+    return;
+  }
+  if (delS) {
+    const d = REG.find(x => x.serial === delS) || {};
+    const ok = confirm("把「" + (d.alias || d.model || delS) + "」从平台移除？\n\n"
+      + "· 只删除平台上的登记记录（别名、号码、验证历史）\n"
+      + "· 不会改动手机：frida-server 仍会运行，USB 调试授权与设备上的文件都保留\n"
+      + "· 移除后平台不再用它跑任务：它会从测试机下拉框里消失，状态页也不再计入"
+      + "「已连接/就绪」的台数。手机仍插着的话会显示在「已连接但未登记」里，"
+      + "随时可以重新添加");
+    if (!ok) return;
+    try {
+      const r = await fetch("/api/devices/" + encodeURIComponent(delS),
+                            {method: "DELETE"}).then(x => x.json());
+      if (!r || r.ok === false) throw new Error((r && r.error) || "移除失败");
+      toast(r.note || "已移除");
+      loadRegistry(true);
+      loadDevices(true);
+    } catch (err) {
+      toast("移除失败：" + (err.message || err));
+    }
+  }
+});
+
+// ---------- 提交 ----------
+$("#submit").onclick = () => {
+  hideErr();
+  if (mode === "upload" && !file) return showErr("请先选择 APK 文件");
+  if (mode === "url" && !$("#apk_url").value.trim()) return showErr("请填写 APK 下载链接");
+  if (mode === "store" && !$("#store_urls").value.trim())
+    return showErr("请填写应用商店详情页链接（一行一个）");
+
+  // 必须人选：程序猜错的代价是"在 A 机上测、报告写 B 机的环境"，
+  // 而这种错误从报告里看不出来（见 loadDevices 上方的注释）。哪怕只插着一台
+  // 也不替用户选 —— 2026-11-11 用户的明确要求。
+  // ★ 口径必须和下拉框一致（只算已登记且在线的）：用 DEVICES.length 会把
+  //   未登记的机器也算进去，于是"两台都移除了"时反而提示"检测到 2 台，请选择" ——
+  //   而用户根本选不了（2026-11-11）。
+  const _devSel = $("#device");
+  const _pickable = DEVICES.filter(d => d.managed && d.state === "device");
+  // 只跑静态时不需要设备，别拦着；需要动态采集才必须有一台被明确选中。
+  if ($("#run_dynamic").checked && !_pickable.length) {
+    return showErr("还没有已添加的测试机。去「手机管理」点「添加手机」，"
+      + "平台会自动识别插在电脑上的设备并部署 frida-server。"
+      + "（本次只想做静态分析的话，取消勾选「执行设备动态采集」即可提交）");
+  }
+  if ($("#run_dynamic").checked && !_devSel.value) {
+    return showErr("请先在「测试机」里选一台"
+      + "（当前 " + _pickable.length + " 台已登记在线）。"
+      + "报告里的设备信息取自你选的那台，程序不会替你挑。");
+  }
+  // 记下提交这一刻这台机是不是正被占着，成功后好把"已进排队"说清楚。
+  const _devNow = DEVICES.find(d => d.serial === _devSel.value) || {};
+
+  const fd = new FormData();
+  // 显式传值，空串就是空（静态任务不需要设备）。服务端不会拿 config.yaml
+  // 里的旧序列号兜底：没有"默认那台"这回事了（2026-11-11）。
+  fd.append("device", _devSel.value || "");
+  if (mode === "upload") fd.append("apk_file", file, file.name);
+  else if (mode === "url") fd.append("apk_url", $("#apk_url").value.trim());
+  else fd.append("store_urls", $("#store_urls").value.trim());
+  fd.append("policy_url", $("#policy_url").value.trim());
+  fd.append("policy_text", $("#policy_text").value.trim());
+  fd.append("run_dynamic", $("#run_dynamic").checked ? "1" : "0");
+  fd.append("duration", $("#duration").value || "90");
+  // 深度档下采集时长由档位决定，这里仍然传值（服务端会忽略），
+  // 但界面要明确置灰 —— 让人以为"我填了 600 秒"却按 900 秒跑是最糟的体验。
+  fd.append("depth", $("#depth").value || "normal");
+  fd.append("reset_app", $("#reset_app").checked ? "1" : "0");
+  fd.append("policy_wait", $("#policy_wait").value || "25");
+  // 登录辅助：**每次都提交明确状态**（与 AI 三个开关同一口径）。
+  // 勾了 → 传号码；取消勾选 → 传空串表示"这次不登录"。
+  // 必须显式传空：服务端在字段缺失时会回落到 config.yaml 里的默认测试号，
+  // 若"不勾就不传"，用户取消勾选反而会被静默当成"默认要登录"。
+  const _ph = ($("#login_phone").value || "").replace(/[\s\-()（）]/g, "");
+  const _loginOn = $("#login_test").checked && !$("#login_phone").disabled;
+  if (_loginOn && !_ph) return showErr("勾选了登录辅助测试，请填写测试手机号（或取消勾选）");
+  fd.append("login_phone", _loginOn ? _ph : "");
+  // 复现开关：不勾就明确传 0（服务端默认是开，不传会被当成开）
+  fd.append("repro", $("#repro").checked ? "1" : "0");
+
+  // AI 增强：**每次都提交三个环节的明确状态**，不再"有勾才提交"。
+  //
+  // 为什么必须这样：原先只有任一勾选时才提交 ai_* 字段，全不勾就一个都不带，
+  // 服务端 `apply_ai_opts` 直接 return → 沿用 config.yaml，而那里 ui_agent 是
+  // true。结果就是"用户取消了勾选，AI 遍历照跑"，界面上显示的与实际执行的
+  // 不一致 —— 这类不一致没法在报告里看出来，属于最该避免的一种。
+  //
+  // 前两项在服务端已固定启用（不受任务级关闭影响），这里恒传 1 只是让存档
+  // 与界面同一口径；真正可改的只有 ui_agent。
+  fd.append("ai_policy_vision", "1");
+  fd.append("ai_policy_analyze", "1");
+  fd.append("ai_ui_agent", $("#ai_ui_agent").checked ? "1" : "0");
+  // ★ 模型地址/模型名/密钥不再随任务提交（2026-11-12）：
+  //   它们是平台级配置，只从「系统状态 → AI 模型服务」里取。
+  //   任务里再带一份，就会出现"两份配置各说各话"，而报告看不出用了哪一份。
+  // 节流两项要带上「0」这种有效值，所以不能用 if (v)
+  for (const id of ["ai_ui_agent_every", "ai_ui_agent_max_calls"]) {
+    const v = $("#" + id).value.trim();
+    if (v !== "") fd.append(id, v);
+  }
+
+  const xhr = new XMLHttpRequest();
+  const btn = $("#submit"), bar = $("#bar"), fill = bar.querySelector("i");
+  xhr.open("POST", "/api/jobs");
+  btn.disabled = true; btn.textContent = "正在上传…";
+  bar.classList.add("on"); fill.style.width = "0%";
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      const p = e.loaded / e.total * 100;
+      fill.style.width = p + "%";
+      if (p >= 100) btn.textContent = "已上传，等待执行…";
+    }
+  };
+  xhr.onload = () => {
+    btn.disabled = false; btn.textContent = "开始检测";
+    setTimeout(() => { bar.classList.remove("on"); fill.style.width = "0%"; }, 900);
+    let r = {};
+    try { r = JSON.parse(xhr.responseText); } catch (e) {}
+    if (xhr.status === 201 && r.ok) {
+      file = null; fileInput.value = ""; $("#fname").textContent = "";
+      $("#apk_url").value = "";
+      const created = (r.job_ids || []).length;
+      if (created > 1) {
+        $("#store_urls").value = ""; countStoreUrls();
+        toast("已创建 " + created + " 个任务，按顺序排队执行");
+      } else if (created === 1 && mode === "store") {
+        $("#store_urls").value = ""; countStoreUrls();
+      } else if (created === 1 && _devNow.busy) {
+        // 不拦提交，但要说清它不是马上就跑：现在正有别的任务占着这台机。
+        toast("已提交 —— " + (_devNow.model || _devNow.serial) + " 正被任务 "
+              + (_devNow.busy_job || "另一任务") + " 占用，本任务排队，轮到时自动切到这台");
+      } else if (created === 1) {
+        toast("已提交，排队中");
+      }
+      // 被跳过的链接必须当面说清：用户贴了 8 行，只建了 5 个任务，
+      // 不说的话他会以为剩下的 3 个正在排队。
+      if (r.skipped && r.skipped.length) {
+        const s = r.skipped[0];
+        const _msg = "另有 " + r.skipped.length + " 条未提交：" +
+                s.url.slice(0, 44) + "（" + s.reason + "）" +
+                (r.skipped.length > 1 ? " 等" : "");
+        // 会跳走用轻提示（跳完还看得见）；一条都没建成则留在表单页用红框说明。
+        if (created > 0) toast(_msg); else showErr(_msg);
+      }
+      refresh(true);
+      // 提交完就跳到列表：任务已经进队列，留在表单页看不到它排第几、
+      // 也看不到是不是正卡在上一单后面等设备。
+      if (created > 0) go("jobs");
+    } else {
+      showErr(r.error || ("提交失败（HTTP " + xhr.status + "）"));
+    }
+  };
+  xhr.onerror = () => {
+    btn.disabled = false; btn.textContent = "开始检测";
+    bar.classList.remove("on");
+    showErr("网络错误，提交失败");
+  };
+  xhr.send(fd);
+};
+
+// ---------- 列表渲染 ----------
+let lastReport = null;
+const ST_LABEL = {queued:"排队中",running:"检测中",paused:"已暂停",
+                  canceled:"已停止",done:"已完成",failed:"失败",skipped:"已跳过"};
+function badge(s){
+  const cls = ST_LABEL[s] ? s : "queued";
+  return '<span class="badge b-'+cls+'">'+(ST_LABEL[s]||s)+'</span>';
+}
+function fmtSize(n){ return n ? (n/1048576).toFixed(1)+" MB" : "—"; }
+// 状态列下的三段时间（2026-11-01 用户要求）：提交 / 开始 / 结束 + 耗时。
+// 原来只有"提交时间"，它说明不了任何与耗时有关的事 ——
+// 一个排队 20 分钟、真正只跑了 90 秒的任务，看起来和跑了 20 分钟一模一样。
+// 排成两行而不是四行：列表一屏要放 20 条，单条太高就白翻了。
+function timeLines(j){
+  const st = j.started_at, en = j.finished_at;
+  const running = (j.status === "running");
+  if (!st) {
+    // 还没开始：写明"排队中"，而不是留空。
+    // 留空会让人以为这个字段没采集到，进而怀疑整条任务的完整性。
+    return '<div class="sub tl" title="任务提交时间">提交 '+fmtTime(j.created_at)+'</div>'
+         + '<div class="sub tl">开始 —（排队中）</div>';
+  }
+  const endTxt = en ? fmtClock(en) : (running ? "进行中" : "—");
+  const durTxt = fmtDur(st, en || (running ? null : 0));
+  return '<div class="sub tl" title="任务提交时间 / 开始时间">'
+           + '提交 '+fmtTime(j.created_at)+' · 开始 '+fmtClock(st)+'</div>'
+       + '<div class="sub tl" title="结束时间 / 总耗时（开始→结束）">'
+           + '结束 '+endTxt+' · 耗时 '+durTxt+'</div>';
+}
+
+function fmtTime(t){
+  if (!t) return "—";
+  const d = new Date(t*1000);
+  const p = x=>String(x).padStart(2,"0");
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());
+}
+// 只到时分秒。开始/结束时间挨得很近时要能分辨（同一个任务从开始到结束
+// 可能只有 20 秒），只写时分会出现"开始 22:41 / 结束 22:41"这种看着像没跑。
+function fmtClock(t){
+  if (!t) return "—";
+  const d = new Date(t*1000);
+  const p = x=>String(x).padStart(2,"0");
+  return p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds());
+}
+// 耗时：秒 → 人话。1 小时档跑完会是"1 小时 3 分"，不是"3810 秒"。
+// to 传 null = 还在跑，按"现在"算；传 0 = 已结束但没记到结束时间，返回"—"
+// （这种情况确实存在：老任务、异常退出的任务。硬按"现在"算会显示一个
+//  比真实耗时长很多的值，那比不显示更误导）。
+function fmtDur(from, to){
+  if (!from) return "—";
+  const end = (to === null || to === undefined) ? Date.now()/1000 : to;
+  if (!end) return "—";
+  let s = Math.max(0, Math.round(end - from));
+  if (s < 60) return s + " 秒";
+  const h = Math.floor(s/3600), m = Math.round((s%3600)/60);
+  if (h) return h + " 小时" + (m ? " " + m + " 分" : "");
+  return m + " 分" + (s%60 ? " " + (s%60) + " 秒" : "");
+}
+
+// 轻提示：暂停/停止这类操作的语义和直觉不一样（运行中暂停＝中断本轮），
+// 必须回一句话说明，否则使用者会以为"暂停"能像播放器那样续上。
+function toast(msg){
+  if (!msg) return;
+  let el = document.getElementById("toast");
+  if (!el){
+    el = document.createElement("div"); el.id="toast";
+    el.style.cssText = "position:fixed;left:50%;bottom:36px;transform:translateX(-50%);"
+      + "background:#16202e;color:#fff;padding:11px 18px;border-radius:9px;font-size:13px;"
+      + "max-width:min(760px,92vw);line-height:1.6;z-index:60;box-shadow:0 8px 30px rgba(0,0,0,.3);"
+      + "opacity:0;transition:opacity .2s;";
+    document.body.appendChild(el);
+  }
+  el.textContent = msg; el.style.opacity = "1";
+  clearTimeout(el._t);
+  el._t = setTimeout(()=>{ el.style.opacity="0"; }, 6000);
+}
+
+const ACT_LABEL = {pause:"暂停", resume:"恢复", cancel:"停止", retry:"重试", delete:"删除",
+                   front:"置顶"};
+
+// ---------- 批量选择 ----------
+// 用独立的 Set 保存勾选状态，不读 DOM。
+// 列表每 3 秒整体重渲（innerHTML 重写），状态若只存在 DOM 里，
+// 用户刚勾好的几项会在下一次轮询时静默消失 —— 勾完去倒杯水回来发现全没了。
+const SEL = new Set();
+let JOBS = [];
+// ---- 列表视图状态（用户 2026-10-31 第五条：分页 20/50/100 + 按结论筛选）----
+// 状态放在模块级而不是 DOM 里：列表每 3 秒整体重渲一次（innerHTML 重写），
+// 页码若只存在 DOM 上，轮询一回来就跳回第 1 页 —— 翻到第 5 页看报告的人会被反复弹回去。
+let PAGE = 1, PER = 20, FILTER = "all", LAST_STATS = {};
+
+// 判断"这条任务的结论属于哪一类"。筛选口径刻意与列表里的徽标一致：
+// 有问题 = 有 high；仅疑似 = 没有 high 但有 mid；未发现问题 = findings 为 0。
+function viewJobs(){
+  const f = FILTER;
+  if (f === "all") return JOBS;
+  return JOBS.filter(j => {
+    // 「有问题 + 仅疑似」= 有 high，或没有 high 但有 mid。
+    // 与「有问题」「仅疑似」两项的判据逐字相同，只是并起来 ——
+    // 换一种写法（比如拿 findings>0 判）会让三项口径悄悄分叉，
+    // 同一个任务在合并筛选里出现、单独筛选里消失。
+    if (f === "issues")  return j.status === "done"
+                                && ((j.high || 0) > 0 || (j.mid || 0) > 0);
+    if (f === "high")    return j.status === "done" && (j.high || 0) > 0;
+    if (f === "suspect") return j.status === "done" && !(j.high || 0) && (j.mid || 0) > 0;
+    if (f === "clean")   return j.status === "done" && (j.findings || 0) === 0;
+    if (f === "running") return j.status === "running" || j.status === "queued"
+                                || j.status === "paused";
+    if (f === "failed")  return j.status === "failed" || j.status === "canceled"
+                                || j.status === "skipped";
+    return true;
+  });
+}
+// 运行中的任务不能删（后端也会拒），勾选框直接禁用，别让人白勾。
+const canDelete = j => j.status !== "running";
+
+// ---- 勾选范围 = 当前筛选范围 ----
+// 勾选只对「筛选后看得见的那批」生效：表头全选框、两个「全选」按钮、反选
+// 全部走这里，而不是未筛选的 JOBS。
+// 起因（用户 2026-11-01 反馈）：筛出"失败"后点批量删除，整库任务全被删了 ——
+// 表头全选框拿的是 JOBS 全量，界面却只显示筛出来的几条，勾选数量和实际删除
+// 数量对不上，而这个操作又不可恢复。
+const selScope = () => viewJobs().filter(canDelete);
+
+// 当前筛选条件的中文名（给确认框用，让人看清"是在哪个范围里删"）。
+function filterLabel(){
+  const el = $("#fstatus");
+  if (!el || !el.options) return "";
+  const o = el.options[el.selectedIndex];
+  return o ? String(o.textContent || "").trim() : "";
+}
+
+function syncBulk(){
+  // 已消失的任务、转成运行中的任务、被当前筛选筛掉的任务，都要从选择里剔除。
+  // 最后一条尤其关键：筛选一换，范围外的勾选就不能再带着去执行删除。
+  const scope = selScope();
+  const inScope = new Set(scope.map(j => j.id));
+  SEL.forEach(id => { if (!inScope.has(id)) SEL.delete(id); });
+  const bar = $("#bulkbar");
+  if (!bar) return;
+  $("#bulkcount").textContent = SEL.size;
+  // 范围的数字必须一直写出来：只显示"已选 3 项"时，用户无从判断是筛出来的
+  // 3 条还是全库的 3 条 —— 这正是误删发生时没人察觉的原因。
+  const sc = $("#bulkscope");
+  if (sc) sc.textContent = "／ 当前筛选范围内共 " + scope.length + " 项可删";
+  // 按钮名随筛选变。名字里带"筛选内"，点下去才知道选的是这一批而不是全库。
+  const inFilter = FILTER !== "all";
+  if ($("#bulkall")) $("#bulkall").textContent = inFilter ? "全选筛选内可删" : "全选可删";
+  if ($("#bulkallrep")) $("#bulkallrep").textContent = inFilter ? "全选筛选内已完成" : "全选已完成";
+  // 常驻显示（有任务时）。早先只在「已选 ≥1」时才出现，于是「全选已完成」
+  // 这个按钮永远够不着 —— 想全选得先勾一个，而勾选的前提是这条已经出现。
+  // 没选中时把两个动作置灰，误点也点不动。
+  // 预览态仍隐藏：列表被收起，孤零零一条批量栏容易误操作。
+  bar.classList.toggle("on", JOBS.length > 0 && !lastReport);
+  if ($("#bulkdl")) $("#bulkdl").disabled = SEL.size === 0;
+  if ($("#bulkdlbrief")) $("#bulkdlbrief").disabled = SEL.size === 0;
+  if ($("#bulkdel")) $("#bulkdel").disabled = SEL.size === 0;
+}
+
+$("#bulkall").onclick = () => {
+  const scope = selScope();
+  if (!scope.length) return toast(FILTER === "all"
+    ? "没有可删除的任务（运行中的任务需先停止）"
+    : "当前筛选范围内没有可删除的任务");
+  scope.forEach(j => SEL.add(j.id));
+  refresh(true);
+};
+// 批量下载的常用姿势是"这批都测完了，打包拿走"，所以单独给一个全选。
+// 只选**报告真的存在**的（has_report 由后端 stat 过），
+// 免得选了一堆 done 但产物被清掉的任务，打包时又少几份。
+// 同样限定在当前筛选范围内 —— 筛着"失败"却把已完成的全选上，等于绕过了筛选。
+$("#bulkallrep").onclick = () => {
+  const scope = viewJobs().filter(j => j.has_report);
+  if (!scope.length) return toast(FILTER === "all"
+    ? "没有已生成报告的任务"
+    : "当前筛选范围内没有已生成报告的任务");
+  scope.forEach(j => SEL.add(j.id));
+  refresh(true);
+};
+$("#bulkclear").onclick = () => { SEL.clear(); refresh(true); };
+$("#bulkdel").onclick = batchDelete;
+$("#bulkdl").onclick = () => batchDownload();
+$("#bulkdlbrief").onclick = () => batchDownload("brief");
+
+// fmt 为空 = 详细报告；"brief" = 简版。
+// 两者走同一个接口，只是把 fmt 传下去 —— 简版的判断完全在后端，
+// 前端不重复实现"哪些任务有简版"（历史任务缺文件时后端会按存档现补）。
+function batchDownload(fmt){
+  const brief = fmt === "brief";
+  const jobs = JOBS.filter(j => SEL.has(j.id));
+  const ready = jobs.filter(j => j.has_report);
+  if (!ready.length){
+    return toast(jobs.length
+      ? "勾选的 " + jobs.length + " 项都没有已生成的报告（未跑完或产物已清理）"
+      : "请先勾选任务");
+  }
+  const skip = jobs.length - ready.length;
+  if (skip > 0 && !confirm("已选 " + jobs.length + " 项，其中 " + skip
+      + " 项没有报告，将只打包 " + ready.length + " 份。继续吗？")) return;
+
+  // 直接交给浏览器：响应带 Content-Disposition，页面不会跳走。
+  // 不用 fetch+blob —— 上百份报告打出来可能就是几十 MB，
+  // 先整包读进内存再转存等于白白拷贝两遍。
+  window.location.href = "/api/reports/zip?ids="
+    + encodeURIComponent(ready.map(j => j.id).join(","))
+    + (brief ? "&fmt=brief" : "");
+  toast("正在打包 " + ready.length + " 份" + (brief ? "简版" : "") + "报告…");
+}
+
+async function batchDelete(){
+  const ids = [...SEL];
+  if (!ids.length) return;
+  const jobs = JOBS.filter(j => SEL.has(j.id));
+  const head = jobs.slice(0, 6).map(j => "· " + (j.app_label || j.apk_name || j.id)).join("\n");
+  const more = jobs.length > 6 ? "\n· 等共 " + jobs.length + " 项" : "";
+  // 确认框里把"这次删的是哪一批"写清楚。删除不可恢复，
+  // 光一个数字不够 —— 得让人看见筛选条件，以及有没有漏在范围外的。
+  const inView = new Set(viewJobs().map(j => j.id));
+  const outside = ids.filter(id => !inView.has(id)).length;
+  const scopeLine = FILTER === "all" ? "" :
+    "\n当前筛选：" + filterLabel() + "（可见 " + viewJobs().length + " 项）";
+  const outLine = outside
+    ? "\n注意：其中 " + outside + " 项已不在当前筛选范围内（状态刚变过）。" : "";
+  if (!confirm("批量删除 " + ids.length + " 个任务？" + scopeLine + "\n\n" + head + more
+      + outLine
+      + "\n\n报告、流程存档、采集存档与 APK 副本都会一并删除，无法恢复。")) return;
+  if (!confirm("再次确认：删除后不可恢复。继续吗？")) return;
+
+  const btn = $("#bulkdel"), old = btn.textContent;
+  btn.disabled = true; btn.textContent = "删除中…";
+  try {
+    const r = await fetch("/api/jobs?ids=" + encodeURIComponent(ids.join(",")),
+                          {method: "DELETE"}).then(x => x.json());
+    const done = (r.deleted || []).length;
+    const sk = r.skipped || [];
+    if (r.ok) {
+      let msg = "已删除 " + done + " 项";
+      if (r.files) msg += "（清理文件/目录 " + r.files + " 处）";
+      if (sk.length) msg += "；跳过 " + sk.length + " 项：" + sk.slice(0, 2).map(s => s.id + " " + s.reason).join("；");
+      toast(msg);
+    } else {
+      toast("批量删除失败：" + (r.error || "未知原因"));
+    }
+    // 正在预览的报告若被删掉，退回列表，别把 iframe 停在 404 上
+    if (lastReport && (r.deleted || []).includes(lastReport)) $("#back") && $("#back").click();
+    SEL.clear();
+    await refresh(true);
+  } catch (e){
+    toast("请求失败：" + e);
+  } finally {
+    btn.disabled = false; btn.textContent = old;
+  }
+}
+
+async function doAction(id, action){
+  if (action === "delete"){
+    if (!confirm("删除这个任务？\n\n报告、流程存档、采集存档与 APK 副本都会一并删除，无法恢复。")) return;
+    if (!confirm("再次确认：删除后不可恢复。继续吗？")) return;
+  }
+  if (action === "cancel" && !confirm("停止这个任务？\n\n运行中的采集会中断，并自动卸载被测应用。\n正在进行的模型调用会立即打断，不再等它返回。")) return;
+  try {
+    const method = action === "delete" ? "DELETE" : "POST";
+    const url = action === "delete" ? "/api/jobs/" + id : "/api/jobs/" + id + "/" + action;
+    const r = await fetch(url, {method}).then(x => x.json());
+    if (!r.ok) return toast("操作失败：" + (r.error || "未知错误"));
+    if (action === "cancel") {
+      // ★ 停止是"异步收尾"，不是瞬时完成。界面必须立刻给出三件事：
+      //   ① 请求已受理 ② 模型调用已打断 ③ 接下来会在哪儿看到结果（状态列）
+      //   否则用户看到画面没变就会反复点，越点越觉得按钮坏了。
+      toast(r.interrupted_ai
+        ? "已打断正在进行的模型调用，正在收尾…（状态列会显示「停止中」）"
+        : (r.note || "已发出停止请求，正在收尾…"));
+      FAST_POLL = Date.now() + 15000;   // 15 秒内 0.8 秒刷一次
+    } else {
+      toast(r.note || ("已" + (ACT_LABEL[action]||action)));
+    }
+    refresh(true);
+  } catch (e){
+    toast("请求失败：" + e);
+  }
+}
+
+function render(jobs, stats){
+  JOBS = jobs || [];
+  LAST_STATS = stats || {};
+  syncBulk();
+  const s = stats || {};
+  $("#stats").innerHTML = [
+    ["累计任务", s.total||0], ["已完成", s.done||0],
+    ["进行中", (s.running||0)+(s.queued||0)+(s.paused||0)],
+    ["失败", s.failed||0], ["已跳过", s.skipped||0], ["已停止", s.canceled||0]
+  ].map(([k,v]) => '<div class="stat"><b>'+v+'</b>'+k+'</div>').join("");
+  // 侧边栏徽标：正在进行（含排队、暂停）的数量。
+  // 不切到列表页也能知道"还有没有活没跑完"，是分页之后最需要的一眼信息。
+  const _run = (s.running||0) + (s.queued||0) + (s.paused||0);
+  const _nb = $("#nav-run");
+  if (_nb) _nb.textContent = _run ? String(_run) : "";
+
+  // ---- 筛选 + 分页 ----
+  // 先算"这一页要画哪几条"，再渲染。JOBS 始终是全量（批量选择、表头全选都基于它），
+  // 只有列表显示受筛选影响 —— 否则"全选已完成"会少选掉被筛掉的那些。
+  const view = viewJobs();
+  const pages = Math.max(1, Math.ceil(view.length / PER));
+  if (PAGE > pages) PAGE = pages;
+  if (PAGE < 1) PAGE = 1;
+  const fcnt = $("#fcnt");
+  if (fcnt) fcnt.innerHTML = JOBS.length
+    ? ("筛选后 <b>" + view.length + "</b> 条 ／ 共 " + JOBS.length + " 条")
+    : "";
+
+  if (!jobs.length) {
+    $("#list").innerHTML = '<div class="muted">暂无任务，请在上方提交第一个 APK。</div>';
+    if ($("#pager")) $("#pager").innerHTML = "";
+    return;
+  }
+  if (!view.length) {
+    $("#list").innerHTML = '<div class="muted">没有符合当前筛选条件的任务。</div>';
+    if ($("#pager")) $("#pager").innerHTML = "";
+    return;
+  }
+  const pageJobs = view.slice((PAGE - 1) * PER, PAGE * PER);
+  const rows = pageJobs.map(j => {
+    const name = j.app_label || j.apk_name || "(未命名)";
+    const pkg = j.package || (j.store_url ? j.store_url : (j.apk_url ? j.apk_url : ""));
+    let res = "—";
+    // 已请求停止但线程还在收尾。这个标记要落在**状态列**（badge 下面），
+    // 不是结论列 —— 结论列写的是"测出了什么"，此刻什么都没测出来。
+    const isStopping = (j.status === "running" && j.req === "cancel");
+    if (j.status === "done") {
+      const n = j.findings||0;
+      res = n ? '<span class="r">'
+        + (j.high?'<span class="chip c-high">问题 '+j.high+'</span>':'')
+        + (j.mid?'<span class="chip c-mid">疑似 '+j.mid+'</span>':'')
+        + '</span>' : '<span class="chip c-low">未发现问题</span>';
+    } else if (j.status === "skipped") {
+      // 悬停看完整原因：列表里只放前 26 字，但"为什么跳过"必须能查。
+      res = '<span class="sub" title="'+(j.error||"")+'">未检测：'+
+            (j.error||"未取得 APK").slice(0,24)+'</span>';
+    } else if (j.status === "failed") {
+      res = '<span class="sub" title="'+(j.error||"")+'">'+(j.error||"失败").slice(0,26)+'</span>';
+    } else if (j.status === "canceled") {
+      res = '<span class="sub">已停止</span>';
+    } else if (j.status === "paused") {
+      res = '<span class="stage">已暂停'+(j.progress?"（"+j.progress+"%）":"")+'</span>';
+    } else {
+      // 已请求停止：结论列不写"检测中"（那会让人以为还在测），
+      // 也不写「停止中」—— 那是状态，放状态列（见下面的 stopInfo）。
+      if (isStopping) {
+        res = '<span class="sub" title="停止请求已发出，本轮不再产生检测结论">—</span>';
+      } else {
+        res = '<span class="stage">'+(j.stage||"排队中")+(j.progress?" "+j.progress+"%":"")+'</span>';
+        // 进度长时间不动要肉眼可见 —— 无人值守时最怕"看着像在跑"。
+        if ((j.stall||0) >= 300)
+          res += '<span class="chip c-mid" title="距上次进度变化 '+(j.stall/60|0)+' 分钟，可能卡在设备交互上">进度停滞</span>';
+      }
+    }
+    const can = j.status === "done";
+    // has_report 是后端 stat 过的：done 但产物被清理掉的任务不该给下载入口，
+    // 点下去只会拿到 409。老接口没有这个字段（undefined）时仍按 can 显示。
+    const hasRep = can && j.has_report !== false;
+    const acts = [];
+    if (hasRep) acts.push('<a class="act" href="#" data-open="'+j.id+'">查看</a>');
+    if (hasRep) acts.push('<a class="act" href="/api/jobs/'+j.id+'/download">详细报告</a>');
+    if (hasRep) acts.push('<a class="act" href="/api/jobs/'+j.id+'/download?fmt=brief">简版报告</a>');
+    if (can) acts.push('<a class="act" href="/api/jobs/'+j.id+'/download?fmt=json">流程存档</a>');
+    for (const a of (j.actions||[])) {
+      // 已经请求停止 → 把「停止」换成不可点的文字。
+      // 留着可点的话，用户会反复点（他自己看不出区别），
+      // 而每点一次都只是一条"已发出停止请求"的日志，像是在敷衍。
+      if (a === "cancel" && j.req === "cancel") {
+        acts.push('<span class="act off" title="停止请求已发出，正在收尾；模型调用已立即中断，设备调用卡住时 1 分钟内强制收工">停止中…</span>');
+        continue;
+      }
+      if (a === "delete") acts.push('<a class="act warn" href="#" data-act="'+a+'" data-id="'+j.id+'">删除</a>');
+      else acts.push('<a class="act" href="#" data-act="'+a+'" data-id="'+j.id+'">'+(ACT_LABEL[a]||a)+'</a>');
+    }
+    // 登录辅助：任务在跑、并且提交时填了测试手机号，就给一个"填验证码"的入口。
+    // 只在这一种情况下显示 —— 没填号的登录页根本不会去点"获取验证码"，
+    // 摆个按钮在那儿只会让人以为漏填了什么。
+    if (j.status === "running" && j.login_phone)
+      acts.push('<a class="act" href="#" data-sms="'+j.id+'">填验证码</a>');
+    acts.push('<a class="act" href="#" data-log="'+j.id+'">日志</a>');
+    const delOK = canDelete(j);
+    // 队列名次贴在状态列里（紧跟「排队中」）：置顶这个操作如果没有"第几位"可看，
+    // 用户就只能靠任务号猜到底生效没有。放在这里而不是「检测结论」列 ——
+    // 那一列的标题写的是结论，排队中的任务还没有结论。
+    const qp = (j.status === "queued" && j.queue_pos)
+      ? '<div class="stage">队列第 ' + j.queue_pos + ' 位</div>' : "";
+    // 停止中：写在状态列。必须**立刻**可见，否则连点几次停止看到画面没变化，
+    // 只会以为按钮失效（2026-11-12 用户报障的原话："点了几次停止没反应"）。
+    // 徽标也一起换成「停止中」—— 同一个格子里写「检测中」又在下面写「停止中」，
+    // 读起来像两个互相矛盾的结论。
+    const stopInfo = isStopping
+      ? '<div class="stage" title="模型调用已立即打断；设备调用结束后会自动卸载被测应用">'
+        + '正在收尾（模型调用已打断）</div>'
+      : "";
+    const stBadge = isStopping
+      ? '<span class="badge b-canceled">停止中</span>'
+      : badge(j.status);
+    const ck = '<input type="checkbox" data-sel="'+j.id+'"'
+      + (SEL.has(j.id) ? ' checked' : '')
+      + (delOK ? '' : ' disabled title="任务正在执行，不能删除（请先停止）"') + '>';
+    return '<tr>'
+      + '<td class="sel">'+ck+'</td>'
+      + '<td><div class="app">'+esc(name)+'</div>'
+        + '<div class="pkg">'+esc(pkg||"—")
+        + (j.device ? ' · 设备 '+esc(j.device) : '')+'</div></td>'
+      + '<td>'+stBadge+timeLines(j)+qp+stopInfo+'</td>'
+      + '<td>'+res+'</td>'
+      + '<td><div class="acts">'+acts.join("")+'</div></td>'
+      + '</tr>';
+  }).join("");
+  $("#list").innerHTML = '<table><thead><tr>'
+    + '<th class="sel"><input type="checkbox" id="selall" title="全选当前筛选范围内的可删任务（运行中的除外）"></th>'
+    + '<th>应用 / 目标</th><th>状态</th>'
+    + '<th>检测结论</th><th>操作</th></tr></thead><tbody>'+rows+'</tbody></table>';
+
+  // 表头全选框：全选 / 反选**只作用于当前筛选范围内的可删任务**。
+  // 原来这里用的是 JOBS 全量，于是「筛出失败 → 点全选 → 批量删除」会把
+  // 没筛出来的任务一起删掉（2026-11-01 误删事故，用户实际数据被清空）。
+  // 界面上看不见的东西，绝不能被"全选"带上。
+  // 只要有部分选中就置 indeterminate，否则"半选"会被看成"没选"。
+  const all = $("#selall"), del = selScope();
+  if (all) {
+    const on = del.filter(j => SEL.has(j.id)).length;
+    all.checked = del.length > 0 && on === del.length;
+    all.indeterminate = on > 0 && on < del.length;
+    all.onchange = () => {
+      // 反选也只取消本范围内的 —— SEL.clear() 会把别的筛选下残留的勾选也抹掉
+      if (all.checked) del.forEach(j => SEL.add(j.id));
+      else del.forEach(j => SEL.delete(j.id));
+      refresh(true);
+    };
+  }
+  $("#list").querySelectorAll("input[data-sel]").forEach(cb => {
+    cb.onchange = () => {
+      if (cb.checked) SEL.add(cb.dataset.sel); else SEL.delete(cb.dataset.sel);
+      syncBulk();
+      // 只重画表头全选框，不整表重渲 —— 整表重渲会让鼠标下的复选框闪一下
+      const d = selScope(), on = d.filter(j => SEL.has(j.id)).length;
+      if (all) { all.checked = d.length > 0 && on === d.length; all.indeterminate = on > 0 && on < d.length; }
+    };
+  });
+  $("#list").querySelectorAll("a[data-open]").forEach(a => a.onclick = e => {
+    e.preventDefault(); openReport(a.dataset.open);
+  });
+  $("#list").querySelectorAll("a[data-act]").forEach(a => a.onclick = e => {
+    e.preventDefault(); doAction(a.dataset.id, a.dataset.act);
+  });
+  $("#list").querySelectorAll("a[data-log]").forEach(a => a.onclick = e => {
+    e.preventDefault(); showLog(a.dataset.log);
+  });
+  $("#list").querySelectorAll("a[data-sms]").forEach(a => a.onclick = e => {
+    e.preventDefault(); submitSms(a.dataset.sms);
+  });
+  renderPager(pages, view.length);
+}
+
+// 分页条：上一页 / 页码（首尾 + 当前 ±1，中间用省略号）/ 下一页。
+// 页码太多时把中间折掉，否则上百页的任务列会把整行撑爆。
+function renderPager(pages, total){
+  const box = $("#pager");
+  if (!box) return;
+  if (lastReport || pages <= 1) { box.innerHTML = ""; return; }
+  const parts = [];
+  parts.push('<button data-page="' + (PAGE - 1) + '"'
+    + (PAGE <= 1 ? " disabled" : "") + ">上一页</button>");
+  const want = new Set([1, pages, PAGE, PAGE - 1, PAGE + 1]);
+  const nums = [...want].filter(p => p >= 1 && p <= pages).sort((a, b) => a - b);
+  let prev = 0;
+  for (const p of nums) {
+    if (prev && p - prev > 1) parts.push('<span class="gap">…</span>');
+    parts.push('<button data-page="' + p + '"'
+      + (p === PAGE ? ' class="on"' : "") + ">" + p + "</button>");
+    prev = p;
+  }
+  parts.push('<button data-page="' + (PAGE + 1) + '"'
+    + (PAGE >= pages ? " disabled" : "") + ">下一页</button>");
+  parts.push('<span style="margin-left:6px">第 ' + PAGE + " / " + pages
+    + " 页，共 " + total + " 条</span>");
+  box.innerHTML = parts.join("");
+  box.querySelectorAll("button[data-page]").forEach(b => {
+    b.onclick = () => {
+      const p = parseInt(b.dataset.page, 10);
+      if (!p || p < 1 || p > pages || p === PAGE) return;
+      PAGE = p;
+      render(JOBS, LAST_STATS);
+    };
+  });
+}
+
+// 筛选 / 每页条数：换条件时回到第 1 页。
+// 不回到第 1 页的话，从"全部"切到"有问题"时很可能停在一个空白的第 7 页上，
+// 看着像"筛出来是空的"，其实只是页码越界。
+if ($("#fstatus")) $("#fstatus").onchange = () => {
+  const before = new Set(SEL);
+  FILTER = $("#fstatus").value || "all";
+  PAGE = 1;
+  render(JOBS, LAST_STATS);   // render 里的 syncBulk 会把范围外的勾选剔掉
+  // 被剔掉多少要明说。悄悄少勾几项，用户会以为"我刚才明明选了 8 个"。
+  const dropped = [...before].filter(id => !SEL.has(id)).length;
+  if (dropped) toast("已切换筛选，范围外的 " + dropped + " 项勾选已取消"
+    + (SEL.size ? "（仍在选中 " + SEL.size + " 项）" : ""));
+};
+if ($("#fsize")) $("#fsize").onchange = () => {
+  PER = parseInt($("#fsize").value, 10) || 20;
+  PAGE = 1;
+  render(JOBS, LAST_STATS);
+};
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// ---------- 短信验证码回填 ----------
+// 采集线程在登录页点了「获取验证码」之后，会每几秒看一次这个任务的工作目录。
+// 这里只负责把码送过去；送早了（任务还没跑到登录页）服务端会 409 拒掉，
+// 而不是让它躺在文件里等一个早就过期的码。
+async function submitSms(id){
+  const raw = prompt("请输入手机收到的短信验证码（4~8 位数字）\n\n"
+    + "【通常不需要手动填】：测试机有 root 时，采集线程会直接从该机短信收件箱\n"
+    + "读取验证码；只有读不到（无 root / 短信存在别的手机上）才在这里补。\n"
+    + "只有在日志出现「需要短信验证码」之后填的码才有效；\n"
+    + "验证码不落库，采集线程取走即删。");
+  if (raw === null) return;
+  const code = String(raw).replace(/\D/g, "");
+  if (!code) return toast("验证码应为数字");
+  try {
+    const r = await fetch("/api/jobs/" + id + "/sms", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({code: code}),
+    }).then(x => x.json());
+    if (!r.ok) return toast("提交失败：" + (r.error || "未知错误"));
+    toast(r.note || "验证码已送达");
+  } catch (e){
+    toast("请求失败：" + e);
+  }
+}
+
+// ---------- 日志 ----------
+async function showLog(id){
+  $("#modal-title").textContent = "任务日志 · " + id;
+  $("#modal-body").textContent = "加载中…";
+  $("#modal").classList.add("on");
+  try {
+    const r = await fetch("/api/jobs/" + id + "/log").then(x => x.json());
+    $("#modal-body").textContent = (r.ok && r.log) ? r.log : "（暂无日志）";
+    const pre = $("#modal-body"); pre.scrollTop = pre.scrollHeight;
+  } catch (e) {
+    $("#modal-body").textContent = "加载失败：" + e;
+  }
+}
+$("#modal-close").onclick = () => $("#modal").classList.remove("on");
+$("#modal").onclick = e => { if (e.target.id === "modal") $("#modal").classList.remove("on"); };
+
+// ---------- 环境自检 ----------
+// 无人值守时最怕"任务排着队，但设备根本没连"。开跑前先把话说清楚。
+// 多机形态下必须**逐台**自检：只探"自动选中的那台"，另一台没 root 也看不出来，
+// 而排队里的任务恰恰要落到另一台上。
+async function checkOne(serial){
+  const url = "/api/env/preflight?device=1&fix=1"
+            + (serial ? "&serial=" + encodeURIComponent(serial) : "");
+  const r = await fetch(url).then(x => x.json());
+  const bad = (r.checks || []).filter(c => !c.ok && c.fatal);
+  return {
+    ok: !!r.ok,
+    serial: serial || (r.serial || ""),
+    label: (r.device && r.device.model) || serial || "—",
+    fixed: (r.checks || []).filter(c => c.fixed).length,
+    elapsed: r.elapsed || 0,
+    why: bad.length ? bad.map(c => c.title).join("；") : (r.error || ""),
+    fix: (bad[0] || {}).fix || "",
+  };
+}
+
+async function envCheck(){
+  const sum = $("#envsum"), btn = $("#envcheck");
+  // 只自检**已登记**的在线设备：未登记的机器不参与任务，给它们跑自检只会
+  // 让"就绪台数"看起来比实际能用的多（同一个"两处不一致"的毛病）。
+  const online = DEVICES.filter(d => d.managed && d.state === "device");
+  if (!online.length) {
+    toast(DEVICES.some(d => d.state === "device")
+      ? "插着的设备都还没添加到平台：去「手机管理」点「添加手机」"
+      : "当前没有已连接的测试机，先检查 USB 与调试授权");
+    return;
+  }
+  btn.disabled = true;
+  sum.textContent = "自检中（" + online.length + " 台，含 frida-server 自动启动）…";
+  const out = [];
+  // 串行跑：preflight 会去 adb shell 里起 frida-server，两台并发容易互相抢 adb。
+  for (const d of online) {
+    sum.textContent = "自检中 " + (d.model || d.serial) + "…（" + (out.length + 1)
+                    + "/" + online.length + "）";
+    try { out.push(await checkOne(d.serial)); }
+    catch (e) { out.push({ok:false, serial:d.serial, label:d.model||d.serial, why:"请求失败："+e}); }
+  }
+  const okN = out.filter(x => x.ok).length;
+  sum.textContent = okN + "/" + out.length + " 台就绪"
+    + (okN < out.length ? " —— " + out.filter(x => !x.ok)
+        .map(x => x.serial + "：" + x.why).join("；") : "")
+    + (out.some(x => x.fixed) ? " · 自动修复 " + out.reduce((a, x) => a + x.fixed, 0) + " 项" : "");
+  toast(out.map(x => (x.label + "：" + (x.ok ? "就绪" : "未就绪")))
+        .join("；") || "自检完成");
+  btn.disabled = false;
+  loadDevices(true);
+}
+$("#envcheck").onclick = envCheck;
+
+function openReport(id){
+  lastReport = id;
+  // 报告就是任务列表页的一部分。不在这一页时先把页面切过去，
+  // 否则 iframe 会在隐藏的 section 里加载，用户什么也看不到。
+  if (CUR_PAGE !== "jobs") go("jobs", false);
+  $("#panel-title").textContent = "检测报告预览";
+  if ($("#panel-sub")) $("#panel-sub").textContent =
+    "报告在下方内嵌预览；返回列表后仍保留原来的筛选条件与页码。";
+  $("#list").style.display = "none";
+  $("#filters").style.display = "none";   // 预览态没有列表，筛选条留着会被当成过滤了报告
+  $("#pager").innerHTML = "";
+  $("#bulkbar").classList.remove("on");   // 预览态没有列表，批量条留着会让人误操作
+  $("#preview").style.display = "";
+  $("#frame").src = "/api/jobs/" + id + "/report";
+  if (!$("#back")) {
+    const b = document.createElement("button");
+    b.id = "back"; b.textContent = "← 返回任务列表";
+    b.style.cssText = "width:auto;margin:0 0 14px;padding:7px 14px;font-size:13px;";
+    b.onclick = () => {
+      $("#panel-title").textContent = "任务列表";
+      if ($("#panel-sub")) $("#panel-sub").textContent =
+        "按结论筛选、批量下载报告；点「查看」在本页预览报告全文。";
+      $("#preview").style.display = "none";
+      $("#list").style.display = "";
+      $("#filters").style.display = "";
+      $("#frame").src = "about:blank";
+      lastReport = null;
+      if (JOBS.length) $("#bulkbar").classList.add("on");
+      render(JOBS, LAST_STATS);   // 把分页条画回来
+    };
+    $("#panel").insertBefore(b, $("#list"));
+  }
+  $("#back").style.display = "";
+}
+
+// ---------- 本机能力：这台机器有没有接检测设备 ----------
+// 部署在服务器上时（无 USB、手机不在同一网段）动态采集跑不了。
+// 与其让人提交后收到 400，不如一开始就把勾选框置灰并说明原因 ——
+// 静默降级成静态更糟：报告里所有采集类结论都会是"跳过未测"，
+// 提交者会把它读成"这个 App 很干净"。
+async function initEnv(){
+  try {
+    const r = await fetch("/api/env").then(x => x.json());
+    if (r && r.device_enabled === false) {
+      const cb = $("#run_dynamic");
+      if (!cb) return;
+      cb.checked = false;
+      cb.disabled = true;
+      const lab = document.querySelector('label[for="run_dynamic"]');
+      if (lab) lab.innerHTML = "本服务未接入检测设备，本次只做静态分析与政策分析"
+        + '<span class="opt">（动态采集需在连接了测试机的主机上执行）</span>';
+    }
+  } catch (e) {}
+}
+
+// ---------- AI 模型服务（系统状态页 · 平台级配置） ----------
+// 为什么放在系统状态页而不是新建任务页：模型地址/密钥是**这台机器**的环境，
+// 不是某次检测的参数。放在任务页会导致「每提交一次都可能带一份不同的配置」，
+// 而报告里写的是环境指纹 —— 两个任务用了不同模型，结论却长得一样。
+let AI_PROFILES = [], AI_ACTIVE = "", AI_CATALOG = [], AI_EDIT = null, AI_TEST = {};
+
+function aiMeta(id) {
+  return AI_CATALOG.find(x => x.id === id) ||
+    {id: id, label: id, vision: false, default_base: "", needs_key: false, hint: ""};
+}
+
+async function loadAiProfiles() {
+  const sum = $("#aisum");
+  try {
+    const r = await fetch("/api/ai/profiles").then(x => x.json());
+    if (!r.ok) throw new Error(r.error || "读取失败");
+    AI_PROFILES = r.profiles || [];
+    AI_ACTIVE = r.active || "";
+    AI_CATALOG = r.catalog || [];
+    renderAiList();
+  } catch (e) {
+    if (sum) sum.textContent = "读取 AI 配置失败：" + e;
+  }
+}
+
+function renderAiList() {
+  const box = $("#ailist"), sum = $("#aisum");
+  if (!box) return;
+  const act = AI_PROFILES.find(p => p.id === AI_ACTIVE);
+  if (sum) {
+    sum.textContent = !AI_PROFILES.length
+      ? "未配置（AI 环节走确定性策略）"
+      : (act ? "已启用：" + act.name
+             : AI_PROFILES.length + " 套配置 · 当前未启用（AI 环节走确定性策略）");
+  }
+  if (!AI_PROFILES.length) {
+    box.innerHTML = '<div class="tip sm" style="margin:0">还没有配置。点右上「+ 添加配置」：'
+      + '本机 Ollama 只填地址和模型名；DeepSeek 填 API 密钥即可。'
+      + '不配置也能跑检测 —— AI 环节自动回退到关键词 + 结构树的确定性策略。</div>';
+    return;
+  }
+  box.innerHTML = AI_PROFILES.map(p => {
+    const m = aiMeta(p.provider);
+    const chips = ['<span class="dchip">' + esc(m.label.split("（")[0]) + '</span>'];
+    if (p.active) chips.push('<span class="dchip g">启用中</span>');
+    // 不能看图的配置要标出来：同一家厂商不同模型能力可以差很远（DeepSeek 的
+    // v4-pro 只读文本、flash 能看图），标成"能看图"却每次都回退，报告里看不出来。
+    if (!p.vision) chips.push('<span class="dchip y" title="该模型不接受图片输入：截图定位政策入口、AI 指挥遍历会回退到规则策略">不支持看图</span>');
+    if (p.has_key) chips.push('<span class="dchip aikey">密钥 ' + esc(p.key_hint || "已保存") + '</span>');
+    const where = p.base_url || (m.default_base || "（服务默认地址）");
+    const vm = p.vision_model ? (" · 视觉 " + p.vision_model) : "";
+    const used = p.last_used_at ? ("上次实际调用：" + fmtDate(p.last_used_at)) : "还没有用于实际检测";
+    const t = AI_TEST[p.id];
+    return '<div class="regrow' + (p.active ? "" : " off") + '">'
+      + '<div class="rg-main">'
+      +   '<div class="rg-name">' + esc(p.name) + chips.join("") + '</div>'
+      +   '<div class="rg-meta">模型 ' + esc(p.model || "—") + esc(vm)
+      +     ' · ' + esc(where) + '</div>'
+      +   '<div class="rg-meta">' + esc(used)
+      +     (p.note ? ' · ' + esc(p.note) : '') + '</div>'
+      +   (t ? '<div class="rg-reason' + (t.ok ? '' : ' bad') + '">' + esc(t.text) + '</div>' : '')
+      + '</div>'
+      + '<div class="rg-acts">'
+      +   '<button type="button" data-aitest="' + esc(p.id) + '">测试</button>'
+      +   (p.active
+            ? '<button type="button" data-aioff="1" title="停用后 AI 环节全部回退到确定性策略">停用</button>'
+            : '<button type="button" data-aion="' + esc(p.id) + '">启用</button>')
+      +   '<button type="button" data-aiedit="' + esc(p.id) + '">编辑</button>'
+      +   '<button type="button" class="danger" data-aidel="' + esc(p.id) + '">删除</button>'
+      + '</div></div>';
+  }).join("");
+}
+
+function syncAiForm() {
+  const prov = $("#f_provider").value;
+  const m = aiMeta(prov);
+  // 地址与模型名的预填由「打开表单」和「切换接口类型」两处负责（见 aiFormOpen /
+  // change 监听）。这里只管提示文案与字段显隐 —— 否则编辑一份已有配置时，
+  // 每次重绘都会把它真实的地址冲成默认值。
+  $("#f_base_url").placeholder = m.default_base || "https://...";
+  $("#f_model").placeholder = prov === "deepseek" ? "deepseek-flash"
+    : (prov === "ollama" ? "qwen2.5:7b" : "服务端部署的模型名");
+  $("#f_vision_model").placeholder = prov === "deepseek" ? "留空自动用 deepseek-flash"
+    : (prov === "ollama" ? "qwen2.5vl:7b" : "留空沿用文本模型");
+  // 「留空沿用文本模型」对 DeepSeek 是错的：它的文本模型可能是只读文本的
+  // deepseek-v4-pro，留空时平台改用 deepseek-flash 而不是沿用 v4-pro。
+  const vo = $("#f_vision_opt");
+  if (vo) vo.textContent = prov === "deepseek"
+    ? "（能看图的只有 deepseek-flash；留空自动用它）"
+    : "（多模态；留空沿用文本模型）";
+  // 视觉模型框对 DeepSeek 同样要留：它按模型分档 —— deepseek-flash 能看图，
+  // deepseek-v4-pro 不能。藏起来会让"文本用 v4-pro、看图用 flash"这种正当配法没处填。
+  $("#f_key_opt").textContent = m.needs_key ? "（必填）" : "（本机服务通常不需要）";
+  const h = $("#f_hint");
+  if (h) {
+    h.innerHTML = esc(m.hint || "")
+      + (prov === "ollama"
+         ? '<br/>地址留空 = <code>http://127.0.0.1:11434</code>。'
+           + '模型名要与 <code>ollama list</code> 一致；视觉能力看模型自身（qwen2.5vl / llava 之类）。'
+         : (prov === "deepseek"
+            ? '<br/>地址留空 = <code>https://api.deepseek.com</code>。'
+              + '看图只能用 <code>deepseek-flash</code>；视觉模型留空时平台自动用它。'
+            : ""));
+  }
+}
+
+function aiFormOpen(p) {
+  AI_EDIT = p || null;
+  $("#aiform-title").textContent = p ? ("编辑：" + p.name) : "添加 AI 配置";
+  $("#f_name").value = p ? p.name : "";
+  $("#f_provider").value = p ? p.provider : "ollama";
+  $("#f_base_url").value = p ? p.base_url : "";
+  $("#f_model").value = p ? p.model : "";
+  $("#f_vision_model").value = p ? (p.vision_model || "") : "";
+  $("#f_api_key").value = "";
+  $("#f_api_key").placeholder = (p && p.has_key)
+    ? ("已保存 " + (p.key_hint || "") + "，留空表示不修改")
+    : "粘贴 API 密钥";
+  $("#f_note").value = p ? (p.note || "") : "";
+  $("#f_out").textContent = "";
+  $("#aiform").style.display = "block";
+  syncAiForm();
+  if (!p) {
+    // 新建时按默认类型把地址填好（syncAiForm 里只在空值时填）
+    const m = aiMeta($("#f_provider").value);
+    if (!m.needs_key) $("#f_base_url").value = m.default_base || "";
+  }
+  try { $("#aiform").scrollIntoView({block: "nearest", behavior: "smooth"}); } catch (e) {}
+  try { $("#f_name").focus(); } catch (e) {}
+}
+
+function aiFormClose() {
+  AI_EDIT = null;
+  $("#aiform").style.display = "none";
+}
+
+async function aiSave() {
+  const out = $("#f_out");
+  const body = {
+    name: $("#f_name").value.trim(),
+    provider: $("#f_provider").value,
+    base_url: $("#f_base_url").value.trim(),
+    model: $("#f_model").value.trim(),
+    vision_model: $("#f_vision_model").value.trim(),
+    note: $("#f_note").value.trim(),
+    activate: true,
+  };
+  if (AI_EDIT) body.id = AI_EDIT.id;
+  const k = $("#f_api_key").value.trim();
+  // 留空 = 不修改（编辑时）；新建时留空 = 没有密钥。
+  if (k) body.api_key = k;
+  if (!body.name) { out.textContent = "✗ 请先给这套配置起个名字"; return; }
+  if (!body.model) { out.textContent = "✗ 请填写模型名"; return; }
+  out.textContent = "正在保存…";
+  try {
+    const r = await fetch("/api/ai/profiles", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    }).then(x => x.json());
+    if (!r.ok) { out.textContent = "✗ " + (r.error || "保存失败"); return; }
+    toast(r.note || "已保存");
+    aiFormClose();
+    await loadAiProfiles();
+  } catch (e) {
+    out.textContent = "✗ 请求失败：" + e;
+  }
+}
+
+async function aiActivate(id) {
+  try {
+    const r = await fetch("/api/ai/active", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({id: id || ""}),
+    }).then(x => x.json());
+    if (!r.ok) return toast("操作失败：" + (r.error || "未知错误"));
+    toast(r.note || "已更新");
+    await loadAiProfiles();
+  } catch (e) { toast("请求失败：" + e); }
+}
+
+async function aiTest(id) {
+  AI_TEST[id] = {ok: true, text: "正在探测（最多 8 秒）…"};
+  renderAiList();
+  try {
+    const r = await fetch("/api/ai/profiles/" + id + "/test",
+                          {method: "POST"}).then(x => x.json());
+    if (r.ok) {
+      const bits = [r.note || "可用"];
+      if (r.vision_hint) bits.push(r.vision_hint);
+      if (r.num_ctx) bits.push("上下文 " + r.num_ctx + " token");
+      AI_TEST[id] = {ok: true, text: "✓ " + bits.join("；")};
+    } else {
+      AI_TEST[id] = {ok: false, text: "✗ " + (r.error || "探测失败")};
+    }
+  } catch (e) {
+    AI_TEST[id] = {ok: false, text: "✗ 请求失败：" + e};
+  }
+  renderAiList();
+}
+
+async function aiDelete(id) {
+  const p = AI_PROFILES.find(x => x.id === id) || {};
+  const extra = p.active
+    ? "\n\n注意：它正是当前启用的配置。删除后没有启用的 AI 配置，"
+      + "AI 环节会全部回退到确定性策略（报告照常生成）。"
+    : "";
+  if (!confirm("删除 AI 配置「" + (p.name || id) + "」？" + extra)) return;
+  try {
+    const r = await fetch("/api/ai/profiles/" + id, {method: "DELETE"})
+      .then(x => x.json());
+    if (!r.ok) return toast("删除失败：" + (r.error || "未知错误"));
+    toast(r.note || "已删除");
+    delete AI_TEST[id];
+    await loadAiProfiles();
+  } catch (e) { toast("请求失败：" + e); }
+}
+
+// 事件委托：列表每次刷新都会重建，逐行绑监听器会越积越多。
+if ($("#aiwrap")) {
+  $("#aiwrap").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const t = b.dataset;
+    if (t.aitest) return aiTest(t.aitest);
+    if (t.aion) return aiActivate(t.aion);
+    if (t.aioff) return aiActivate("");
+    if (t.aiedit) return aiFormOpen(AI_PROFILES.find(x => x.id === t.aiedit) || null);
+    if (t.aidel) return aiDelete(t.aidel);
+    if (b.id === "aiadd") return aiFormOpen(null);
+    if (b.id === "f_save") return aiSave();
+    if (b.id === "f_cancel") return aiFormClose();
+  });
+  $("#f_provider").addEventListener("change", () => {
+    if (!AI_EDIT) {
+      const m = aiMeta($("#f_provider").value);
+      const prov = $("#f_provider").value;
+      $("#f_base_url").value = m.default_base || "";
+      // DeepSeek 的默认文本模型就是 deepseek-flash（它同时是唯一能看图的模型）。
+      // `deepseek-chat` 已经不在官方现行模型表里，不能再预填它。
+      $("#f_model").value = prov === "deepseek" ? "deepseek-flash" : "";
+      if (prov === "deepseek") { $("#f_vision_model").value = "deepseek-flash"; }
+      else if ($("#f_vision_model").value === "deepseek-flash") { $("#f_vision_model").value = ""; }
+    }
+    syncAiForm();
+  });
+}
+
+// ---------- 轮询 ----------
+// 停止之后的一小段时间用更快的节奏：收尾通常在几秒内完成，
+// 3 秒一次的轮询会让"点了停止"到"状态变了"之间看起来是个空档。
+let FAST_POLL = 0;
+async function refresh(immediate){
+  try {
+    const r = await fetch("/api/jobs").then(x => x.json());
+    if (r.ok) render(r.jobs || [], r.stats || {});
+  } catch (e) {}
+}
+if (!pollTimer) pollTimer = setInterval(() => { if (!lastReport) refresh(); }, 3000);
+setInterval(() => {
+  if (FAST_POLL && Date.now() < FAST_POLL && !lastReport) refresh();
+}, 800);
+// 落地页：地址里没有 hash 时进「系统状态」（用户指定的默认页）。
+// 放在这里而不是脚本开头 —— JOBS/LAST_STATS 是 let 声明，早于它们调用会被 TDZ 拦住。
+go(hashPage(), true);
+initEnv();
+refresh();
+// 不再在页面加载时自动跑完整自检：两台机各跑一遍要十几秒，而且会去设备上
+// 拉起 frida-server —— 打开个页面就动设备，不该是默认行为。
+// 顶部卡片由 /api/devices 驱动（连接/root/frida/占用都实测），10 秒自刷新；
+// "全部自检"按钮在需要时（含 12 项深度检查与自动修复）再按。
+</script>
+</body>
+</html>

@@ -1,0 +1,703 @@
+{
+  "_about": [
+    "敏感 API 静态表：API 签名 -> 信息类别 -> 行为码 -> 所需权限。",
+    "用途：静态扫描 APK 字符串池，判断应用「具备」采集某类个人信息的能力。",
+    "注意：静态命中只证明代码里有这个调用入口，不证明实际采集过 —— 后者要看运行期事件。",
+    "类名与方法签名取自 Android 框架公开接口（AOSP，Apache-2.0）；分类、标签与行为码由本项目拟定。"
+  ],
+  "_note": "signatures 中的 (***) 表示任意参数，一行覆盖该方法的全部重载。所列类与方法均为 Android 框架公开接口（AOSP）。",
+  "schema_version": 1,
+  "ignore_packages": [
+    "java.",
+    "javax.",
+    "android.",
+    "androidx.",
+    "org.apache.",
+    "com.android.",
+    "dalvik."
+  ],
+  "component_types": [
+    "android.app.Service",
+    "android.app.IntentService",
+    "android.support.v4.app.NotificationCompatSideChannelService",
+    "android.app.Activity",
+    "android.app.NativeActivity",
+    "android.app.TabActivity",
+    "android.app.ListActivity",
+    "android.app.ExpandableListActivity",
+    "android.app.LauncherActivity",
+    "android.preference.PreferenceActivity",
+    "android.support.v4.app.FragmentActivity",
+    "android.support.v7.app.AppCompatActivity",
+    "android.support.v7.app.ActionBarActivity",
+    "android.support.v4.app.Fragment",
+    "android.support.v4.app.ListFragment",
+    "android.support.v4.app.DialogFragment",
+    "android.content.BroadcastReceiver",
+    "android.content.ContentProvider"
+  ],
+  "apis": [
+    {
+      "category": "WIFI",
+      "label": "获取WIFI状态",
+      "behavior_code": "android.permission.ACCESS_WIFI_STATE",
+      "required_permissions": "android.permission.ACCESS_WIFI_STATE",
+      "signatures": [
+        "android.net.wifi.WifiManager#getWifiState(***)"
+      ]
+    },
+    {
+      "category": "WIFI",
+      "label": "改变WIFI状态",
+      "behavior_code": "android.permission.CHANGE_WIFI_STATE",
+      "required_permissions": "android.permission.CHANGE_WIFI_STATE;android.permission.ACCESS_WIFI_STATE",
+      "signatures": [
+        "android.net.wifi.WifiManager#setWifiEnabled(***)"
+      ]
+    },
+    {
+      "category": "WIFI",
+      "label": "获取周围wifi热点",
+      "behavior_code": "android.permission.GET_WIFI_SCAN_RESULT",
+      "required_permissions": "android.permission.ACCESS_WIFI_STATE;android.permission.ACCESS_COARSE_LOCATION;android.permission.ACCESS_FINE_LOCATION",
+      "signatures": [
+        "android.net.wifi.WifiManager#getConnectionInfo(***)",
+        "android.net.wifi.WifiInfo#getIpAddress(***)",
+        "android.net.wifi.WifiInfo#getSSID(***)",
+        "android.net.wifi.WifiInfo#getBSSID(***)",
+        "android.net.wifi.WifiInfo#getRssi(***)",
+        "android.net.wifi.WifiInfo#getLinkSpeed(***)",
+        "android.net.wifi.WifiInfo#getFrequency(***)"
+      ]
+    },
+    {
+      "category": "WIFI",
+      "label": "获取WIFI信息",
+      "behavior_code": "android.permission.GET_WIFI_INFO",
+      "required_permissions": "android.permission.ACCESS_WIFI_STATE;android.permission.ACCESS_COARSE_LOCATION;android.permission.ACCESS_FINE_LOCATION",
+      "signatures": [
+        "android.net.wifi.WifiManager#getWifiState(***)"
+      ]
+    },
+    {
+      "category": "BSSID",
+      "label": "获取BSSID",
+      "behavior_code": "android.permission.GET_BSSID",
+      "required_permissions": "android.permission.ACCESS_WIFI_STATE;android.permission.ACCESS_COARSE_LOCATION;android.permission.ACCESS_FINE_LOCATION",
+      "signatures": [
+        "android.net.wifi.WifiManager#getScanResults(***)",
+        "android.net.wifi.WifiInfo#getBSSID(***)"
+      ]
+    },
+    {
+      "category": "SSID",
+      "label": "获取SSID",
+      "behavior_code": "android.permission.GET_SSID",
+      "required_permissions": "android.permission.ACCESS_WIFI_STATE;android.permission.ACCESS_COARSE_LOCATION;android.permission.ACCESS_FINE_LOCATION",
+      "signatures": [
+        "android.net.wifi.WifiManager#getScanResults(***)",
+        "android.net.NetworkInfo#getExtraInfo(***)",
+        "android.net.wifi.WifiInfo#getSSID(***)"
+      ]
+    },
+    {
+      "category": "传感器",
+      "label": "读取传感器",
+      "behavior_code": "android.permission.SENSOR",
+      "required_permissions": "",
+      "signatures": [
+        "android.hardware.SensorManager#registerUnregisterEvent(***)",
+        "android.hardware.SensorManager#registerListener(***)",
+        "android.hardware.SensorManager#getSensorList(***)",
+        "android.hardware.SensorManager#getDynamicSensorList(***)"
+      ]
+    },
+    {
+      "category": "ICCID",
+      "label": "读取手机ICCID",
+      "behavior_code": "android.permission.READ_PHONE_STATE_ICCID",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getSimSerialNumber(***)"
+      ]
+    },
+    {
+      "category": "IMEI",
+      "label": "读取手机IMEI",
+      "behavior_code": "android.permission.READ_PHONE_STATE_IMEI",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getDeviceId(***)",
+        "android.telephony.TelephonyManager#getImei(***)"
+      ]
+    },
+    {
+      "category": "IMSI",
+      "label": "读取手机IMSI",
+      "behavior_code": "android.permission.READ_PHONE_STATE_IMSI",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getSubscriberId(***)"
+      ]
+    },
+    {
+      "category": "mac",
+      "label": "获取MAC地址",
+      "behavior_code": "android.permission.GET_MAC",
+      "required_permissions": "android.permission.ACCESS_WIFI_STATE;android.permission.INTERNET",
+      "signatures": [
+        "java.net.NetworkInterface#getHardwareAddress(***)",
+        "android.net.wifi.WifiInfo#getMacAddress(***)",
+        "android.bluetooth.BluetoothAdapter#getAddress(***)"
+      ]
+    },
+    {
+      "category": "MEID",
+      "label": "获取MEID",
+      "behavior_code": "android.permission.READ_PHONE_STATE_MEID",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getMeid(***)",
+        "android.telephony.TelephonyManager#getEsn(***)"
+      ]
+    },
+    {
+      "category": "SIM",
+      "label": "获取SIM卡状态",
+      "behavior_code": "android.permission.READ_PHONE_STATE_SIM",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getSimStat(***)"
+      ]
+    },
+    {
+      "category": "定位",
+      "label": "读取定位信息",
+      "behavior_code": "android.permission.ACCESS_FINE_LOCATION",
+      "required_permissions": "android.permission.ACCESS_WIFI_STATE,android.permission.ACCESS_COARSE_LOCATION;android.permission.ACCESS_FINE_LOCATION",
+      "signatures": [
+        "android.location.LocationManager#getLastLocation(***)",
+        "android.location.LocationManager#getCurrentLocation(***)",
+        "android.location.LocationManager#registerGnssStatusCallback(***)",
+        "android.location.LocationManager#getLatitude(***)",
+        "android.location.LocationManager#getLongitude(***)",
+        "android.location.LocationManager#getLastKnownLocation(***)",
+        "android.location.LocationManager#requestLocationUpdates(***)",
+        "android.telephony.TelephonyManager#getCellLocation(***)",
+        "android.telephony.TelephonyManager#getNeighboringCellInfo(***)",
+        "android.telephony.TelephonyManager#getAllCellInfo(***)",
+        "android.telephony.WifiManager#getConnectionInfo(***)",
+        "android.telephony.WifiManager#getScanResults(***)"
+      ]
+    },
+    {
+      "category": "手机号码",
+      "label": "获取手机号码",
+      "behavior_code": "android.permission.READ_PHONE_STATE_PHONECODE",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getLine1Number(***)",
+        "android.telephony.TelephonyManager#getMsisdn(***)",
+        "android.telephony.TelephonyManager#getCompleteVoiceMailNumber(***)",
+        "android.telephony.TelephonyManager#getLine1AlphaTag(***)",
+        "android.telephony.TelephonyManager#getVoiceMailNumber(***)"
+      ]
+    },
+    {
+      "category": "手机类型",
+      "label": "获取手机类型",
+      "behavior_code": "android.permission.READ_PHONE_TYPE",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getCurrentPhoneTypeForSlot(***)",
+        "android.telephony.TelephonyManager#getPhoneType(***)",
+        "android.os.SystemProperties#get(***)"
+      ]
+    },
+    {
+      "category": "网络接入标识",
+      "label": "获取网络接入标识",
+      "behavior_code": "android.permission.READ_PHONE_STATE_NAI",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getNaiBySubscriberId(***)"
+      ]
+    },
+    {
+      "category": "硬件序列号",
+      "label": "获取硬件序列号",
+      "behavior_code": "android.permission.READ_PHONE_STATE_SERIALNO",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.os.Build#getSerial(***)",
+        "android.os.Build#SERIAL(***)"
+      ]
+    },
+    {
+      "category": "运营商",
+      "label": "获取运营商信息",
+      "behavior_code": "android.permission.MY_GET_SIM_OPNAME",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getNetworkOperatorName(***)",
+        "android.telephony.TelephonyManager#getNetworkOperatorForPhone(***)",
+        "android.telephony.TelephonyManager#getSimOperatorNumericForPhone(***)",
+        "android.telephony.TelephonyManager#getSimOperatorNameForPhone(***)"
+      ]
+    },
+    {
+      "category": "SIM",
+      "label": "读取SIM国家代码",
+      "behavior_code": "android.permission.MY_GET_SIM_COUNTRY",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getSimCountryIso(***)",
+        "android.telephony.TelephonyManager#getSimCountryIsoForPhone(***)"
+      ]
+    },
+    {
+      "category": "系统设置",
+      "label": "读取系统设置",
+      "behavior_code": "android.permission.READ_SYSTEM_SETTINGS",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.provider.Settings$Secure#getString(***)",
+        "android.provider.Settings$Global#getString(***)",
+        "android.provider.Settings$System#getString(***)",
+        "android.provider.Settings$Secure#getInt(***)",
+        "android.provider.Settings$Global#getInt(***)",
+        "android.provider.Settings$System#getInt(***)"
+      ]
+    },
+    {
+      "category": "安装列表",
+      "label": "读取应用安装列表",
+      "behavior_code": "android.permission.MY_READ_INSTALLED_PACKAGES",
+      "required_permissions": "",
+      "signatures": [
+        "android.content.pm.PackageManagerShellCommand#runListPackages(***)",
+        "android.app.ApplicationPackageManager#getInstalledPackages(***)",
+        "android.app.ApplicationPackageManager#getInstalledApplications(***)",
+        "android.app.ApplicationPackageManager#queryIntentActivities(***)"
+      ]
+    },
+    {
+      "category": "安装列表",
+      "label": "读指定包名信息",
+      "behavior_code": "android.permission.GET_PACKAGEINFO",
+      "required_permissions": "",
+      "signatures": [
+        "android.app.Intent#resolveActivity(***)",
+        "android.app.Intent#resolveActivityInfo(***)",
+        "android.app.ApplicationPackageManager#getPackageInfo(***)",
+        "android.app.ApplicationPackageManager#queryIntentActivities(***)"
+      ]
+    },
+    {
+      "category": "检查权限",
+      "label": "检查权限状态",
+      "behavior_code": "android.permission.CHECK_PERMISSION",
+      "required_permissions": "",
+      "signatures": [
+        "android.app.ContextImpl#checkPermission(***)"
+      ]
+    },
+    {
+      "category": "插件",
+      "label": "加载插件",
+      "behavior_code": "android.permission.LOAD_DEX",
+      "required_permissions": "",
+      "signatures": [
+        "dalvik.system.DexClassLoader#DexClassLoader(***)",
+        "dalvik.system.DexFile#loadDex(***)",
+        "dalvik.system.BaseDexClassLoader#BaseDexClassLoader(***)",
+        "java.lang.System#loadLibrary(***)",
+        "java.lang.System#load(***)"
+      ]
+    },
+    {
+      "category": "IP",
+      "label": "获取主机IP地址",
+      "behavior_code": "android.permission.GET_HOST_ADDRESS",
+      "required_permissions": "android.permission.ACCESS_WIFI_STATE",
+      "signatures": [
+        "java.net.Inet6Address#getAddress(***)",
+        "java.net.Inet6Address#getHostAddress(***)",
+        "java.net.Inet4Address#getAddress(***)",
+        "java.net.Inet4Address#getHostAddress(***)",
+        "java.net.InetAddress#toString(***)",
+        "android.net.wifi.WifiInfo#getIpAddress(***)",
+        "java.net.NetworkInterface#getInetAddresses(***)",
+        "java.net.NetworkInterface#getInterfaceAddresses(***)"
+      ]
+    },
+    {
+      "category": "DHCP",
+      "label": "获取DHCP信息",
+      "behavior_code": "android.permission.GET_DHCP",
+      "required_permissions": "android.permission.ACCESS_WIFI_STATE;android.permission.INTERNET",
+      "signatures": [
+        "android.net.wifi.WifiManager#getDhcpInfo(***)"
+      ]
+    },
+    {
+      "category": "粘贴板",
+      "label": "读取粘贴板",
+      "behavior_code": "android.permission.CLIPBOARD2",
+      "required_permissions": "",
+      "signatures": [
+        "android.content.ClipboardManager#getPrimaryClip(***)"
+      ]
+    },
+    {
+      "category": "粘贴板",
+      "label": "写入粘贴板",
+      "behavior_code": "android.permission.CLIPBOARD_SET",
+      "required_permissions": "",
+      "signatures": [
+        "android.content.ClipboardManager#setPrimaryClip(***)"
+      ]
+    },
+    {
+      "category": "粘贴板",
+      "label": "探测粘贴板",
+      "behavior_code": "android.permission.CLIPBOARD_CHECK",
+      "required_permissions": "",
+      "signatures": [
+        "android.content.ClipboardManage#hasText(***)",
+        "android.content.ClipboardManage#getPrimaryClipDescription(***)",
+        "android.content.ClipboardManage#hasPrimaryClip(***)",
+        "android.content.ClipboardManage#addPrimaryClipChangedListener(***)",
+        "android.content.ClipboardManage#removePrimaryClipChangedListener(***)"
+      ]
+    },
+    {
+      "category": "相机",
+      "label": "调用系统相机",
+      "behavior_code": "android.permission.CAMERA",
+      "required_permissions": "android.permission.CAMERA;android.permission.RECORD_AUDIO",
+      "signatures": [
+        "android.hardware.Camera#<init>(***)",
+        "android.hardware.Camera#open(***)",
+        "android.hardware.Camera#takePicture(***)",
+        "android.hardware.camera2.CameraManager#openCamera(***)",
+        "android.hardware.camera2.impl.CameraCaptureSessionImpl#capture(***)",
+        "android.hardware.camera2.impl.CameraCaptureSessionImpl#captureBurst(***)",
+        "android.hardware.camera2.impl.CameraCaptureSessionImpl#setRepeatingRequest(***)"
+      ]
+    },
+    {
+      "category": "短信",
+      "label": "发送短信",
+      "behavior_code": "android.permission.SEND_SMS",
+      "required_permissions": "android.permission.SEND_SMS",
+      "signatures": [
+        "android.telephony.SmsManager#sendMultimediaMessage(***)",
+        "android.telephony.SmsManager#sendMultipartTextMessageInternal(***)",
+        "android.telephony.SmsManager#sendTextMessage(***)",
+        "android.telephony.SmsManager#sendDataMessage(***)"
+      ]
+    },
+    {
+      "category": "短信",
+      "label": "接收短信",
+      "behavior_code": "android.permission.RECEIVE_SMS",
+      "required_permissions": "android.permission.RECEIVE_SMS",
+      "signatures": [
+        "android.telephony.SmsManager#createFromPdu(***)"
+      ]
+    },
+    {
+      "category": "运行列表",
+      "label": "获取运行列表",
+      "behavior_code": "android.permission.GET_RUNNING_APP",
+      "required_permissions": "",
+      "signatures": [
+        "android.app.ActivityManager#getRunningTasks(***)",
+        "android.app.ActivityManager#getRunningAppProcesses(***)",
+        "android.app.ActivityManager#getRunningServices(***)"
+      ]
+    },
+    {
+      "category": "蓝牙",
+      "label": "蓝牙开关",
+      "behavior_code": "android.permission.BLUETOOTH",
+      "required_permissions": "android.permission.BLUETOOTH",
+      "signatures": [
+        "com.android.server.BluetoothManagerService#enable(***)",
+        "com.android.server.BluetoothManagerService#disable(***)"
+      ]
+    },
+    {
+      "category": "网络类型",
+      "label": "修改网络类型",
+      "behavior_code": "android.permission.ENFORCE_TRANSPORT_TYPE",
+      "required_permissions": "android.permission.ENFORCE_TRANSPORT_TYPE",
+      "signatures": [
+        "android.net.NetworkRequest#addTransportType(***)"
+      ]
+    },
+    {
+      "category": "录音",
+      "label": "录音",
+      "behavior_code": "android.permission.RECORD_AUDIO",
+      "required_permissions": "android.permission.RECORD_AUDIO",
+      "signatures": [
+        "android.media.AudioRecord#startRecording(***)",
+        "android.media.AudioRecord#stop(***)",
+        "android.media.MediaRecorder#start(***)",
+        "android.media.MediaRecorder#prepare(***)"
+      ]
+    },
+    {
+      "category": "读SD卡",
+      "label": "读SD卡文件",
+      "behavior_code": "android.permission.READ_EXTERNAL_STORAGE",
+      "required_permissions": "android.permission.WRITE_EXTERNAL_STORAGE;android.permission.READ_EXTERNAL_STORAGE",
+      "signatures": [
+        "java.io.FileItputStream#FileIntputStream(***)",
+        "android.os.Environment#getExternalStorageDirectory(***)"
+      ]
+    },
+    {
+      "category": "写SD卡",
+      "label": "写SD卡文件",
+      "behavior_code": "android.permission.WRITE_EXTERNAL_STORAGE",
+      "required_permissions": "android.permission.WRITE_EXTERNAL_STORAGE;android.permission.READ_EXTERNAL_STORAGE",
+      "signatures": [
+        "java.io.FileItputStream#FileOutputStream(***)",
+        "java.io.File#createNewFile(***)",
+        "java.io.File#delete(***)",
+        "java.io.File#mkdir(***)"
+      ]
+    },
+    {
+      "category": "shell命令",
+      "label": "执行shell命令",
+      "behavior_code": "android.permission.MY_SHELL",
+      "required_permissions": "",
+      "signatures": [
+        "java.lang.Runtime#exec(***)",
+        "java.io.BufferedOutputStream#write(***)"
+      ]
+    },
+    {
+      "category": "拨打电话",
+      "label": "拨打电话",
+      "behavior_code": "android.permission.CALL_PHONE",
+      "required_permissions": "android.permission.CALL_PHONE;android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "com.android.server.am.ActivityStarter#startActivity(***)",
+        "android.telephony.TelephonyManager#call(***)",
+        "com.android.server.am.ActivityStarter#executeRequest(***)"
+      ]
+    },
+    {
+      "category": "电话状态",
+      "label": "监听电话状态",
+      "behavior_code": "android.permission.MY_LISTEN_PHONE_STATE",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getCallState(***)",
+        "android.telephony.TelephonyManager#getCallStateForSlot(***)",
+        "android.telephony.TelephonyManager#listen(***)"
+      ]
+    },
+    {
+      "category": "联网方式",
+      "label": "手机联网方式",
+      "behavior_code": "android.permission.ACTIVE_NETWORKINFO",
+      "required_permissions": "",
+      "signatures": [
+        "android.net.ConnectivityManager#getActiveNetworkInfo(***)"
+      ]
+    },
+    {
+      "category": "网络类型",
+      "label": "手机网络类型",
+      "behavior_code": "android.permission.GET_NETWORKTYPE",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getNetworkType(***)",
+        "android.telephony.TelephonyManager#getDataNetworkType(***)",
+        "android.telephony.TelephonyManager#getVoiceNetworkType(***)",
+        "android.telephony.TelephonyManager#getLteOnCdmaMode(***)"
+      ]
+    },
+    {
+      "category": "服务状态",
+      "label": "手机服务状态",
+      "behavior_code": "android.permission.GET_SERVICESTATE",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getServiceState(***)",
+        "android.telephony.TelephonyManager#isRadioOn(***)",
+        "android.telephony.TelephonyManager#isVideoCallingEnabled(***)",
+        "android.telephony.TelephonyManager#isOffhook(***)",
+        "android.telephony.TelephonyManager#isRinging(***)",
+        "android.telephony.TelephonyManager#isIdle(***)"
+      ]
+    },
+    {
+      "category": "移动网参数",
+      "label": "移动网参数",
+      "behavior_code": "android.permission.GET_CARRIERCONFIG",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getCarrierConfig(***)",
+        "android.telephony.TelephonyManager#getForbiddenPlmns(***)",
+        "android.telephony.TelephonyManager#getGroupIdLevel1(***)",
+        "android.telephony.TelephonyManager#query(***)",
+        "android.telephony.TelephonyManager#getString(***)"
+      ]
+    },
+    {
+      "category": "语音信箱",
+      "label": "语音信箱信息",
+      "behavior_code": "android.permission.GET_VOICEMAIL",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getVoiceMailAlphaTag(***)",
+        "android.telephony.TelephonyManager#getVisualVoicemailPackageName(***)",
+        "android.telephony.TelephonyManager#getVoiceMessageCount(***)",
+        "android.telephony.TelephonyManager#isVisualVoicemailEnabled(***)"
+      ]
+    },
+    {
+      "category": "漫游标识",
+      "label": "手机漫游标识",
+      "behavior_code": "android.permission.ROAMINGINDICATOR",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getCdmaEriIconIndex(***)",
+        "android.telephony.TelephonyManager#getCdmaEriIconMode(***)",
+        "android.telephony.TelephonyManager#getCdmaEriText(***)",
+        "android.database.CursorWrapper#getString(***)"
+      ]
+    },
+    {
+      "category": "模块版本",
+      "label": "手机模块版本",
+      "behavior_code": "android.permission.DEVICESOFTWAREVERSION",
+      "required_permissions": "android.permission.READ_PHONE_STATE",
+      "signatures": [
+        "android.telephony.TelephonyManager#getDeviceSoftwareVersion(***)"
+      ]
+    },
+    {
+      "category": "Account账户信息",
+      "label": "Account账户信息",
+      "behavior_code": "android.permission.GET_ACCOUNTINFO",
+      "required_permissions": "android.permission.ACCOUNT_MANAGER",
+      "signatures": [
+        "android.accounts.AccountManager#addOnAccountsUpdatedListener(***)",
+        "android.accounts.AccountManager#getAccounts(***)",
+        "android.accounts.AccountManager#getAccountsForPackage(***)",
+        "android.accounts.AccountManager#getAccountsByType(***)",
+        "android.accounts.AccountManager#getAccountsByTypeForPackage(***)",
+        "android.accounts.AccountManager#getPassword(***)",
+        "android.accounts.AccountManager#getUserData(***)"
+      ]
+    },
+    {
+      "category": "创建通知渠道",
+      "label": "创建通知渠道",
+      "behavior_code": "android.permission.NOTIFICATIONCHANNEL",
+      "required_permissions": "",
+      "signatures": [
+        "android.app.NotificationManager#createNotificationChannels(***)"
+      ]
+    },
+    {
+      "category": "GAID",
+      "label": "读取GAID",
+      "behavior_code": "android.permission.READ_PHONE_GAID",
+      "required_permissions": "",
+      "signatures": [
+        "com.google.android.gms.ads.identifier.AdvertisingIdClient$Info#getId(***)"
+      ]
+    },
+    {
+      "category": "ROOT",
+      "label": "获取ROOT权限",
+      "behavior_code": "android.permission.SUPERUSER_CHECK",
+      "required_permissions": "",
+      "signatures": []
+    },
+    {
+      "category": "Android_ID",
+      "label": "读取Android_ID",
+      "behavior_code": "android.permission.READ_ANDROID_ID",
+      "required_permissions": "",
+      "signatures": []
+    },
+    {
+      "category": "定位",
+      "label": "读取粗略定位",
+      "behavior_code": "android.permission.ACCESS_COARSE_LOCATION",
+      "required_permissions": "android.permission.ACCESS_COARSE_LOCATION",
+      "signatures": [
+        "android.location.LocationManager#getLastKnownLocation(***)",
+        "android.location.LocationManager#requestLocationUpdates(***)"
+      ]
+    },
+    {
+      "category": "日历",
+      "label": "读取日历",
+      "behavior_code": "android.permission.READ_CALENDAR",
+      "required_permissions": "android.permission.READ_CALENDAR",
+      "signatures": [
+        "android.provider.CalendarContract$Events#CONTENT_URI",
+        "android.provider.CalendarContract$Calendars#CONTENT_URI"
+      ]
+    },
+    {
+      "category": "通讯录",
+      "label": "读取联系人",
+      "behavior_code": "android.permission.READ_CONTACTS",
+      "required_permissions": "android.permission.READ_CONTACTS",
+      "signatures": [
+        "android.provider.ContactsContract$Contacts#CONTENT_URI",
+        "android.provider.ContactsContract$CommonDataKinds$Phone#CONTENT_URI"
+      ]
+    },
+    {
+      "category": "短信",
+      "label": "读取短信",
+      "behavior_code": "android.permission.READ_SMS",
+      "required_permissions": "android.permission.READ_SMS",
+      "signatures": [
+        "android.provider.Telephony$Sms#CONTENT_URI",
+        "android.provider.Telephony$Sms$Inbox#CONTENT_URI"
+      ]
+    },
+    {
+      "category": "通话",
+      "label": "读取通话记录",
+      "behavior_code": "android.permission.READ_CALL_LOG",
+      "required_permissions": "android.permission.READ_CALL_LOG",
+      "signatures": [
+        "android.provider.CallLog$Calls#CONTENT_URI"
+      ]
+    },
+    {
+      "category": "媒体",
+      "label": "泛查内容提供者",
+      "behavior_code": "android.permission.CONTENTRESOLVER",
+      "required_permissions": "android.permission.READ_EXTERNAL_STORAGE",
+      "signatures": [
+        "android.content.ContentResolver#query(***)"
+      ]
+    },
+    {
+      "category": "设备标识",
+      "label": "读取OAID",
+      "behavior_code": "android.permission.READ_PHONE_OAID",
+      "required_permissions": "",
+      "signatures": [
+        "com.bun.miitmdid.core.MdidSdkHelper#InitSdk(***)",
+        "com.bun.miitmdid.core.MdidSdkHelper#InitSdkWithCert(***)"
+      ]
+    }
+  ]
+}

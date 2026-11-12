@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "SDK 包名别名表：同一个 SDK 在真机调用栈里出现的其它包名根。",
+    "用途：静态识别与运行期归因共用一张表，避免「静态认得出、归因写未识别」。",
+    "只收有真机栈帧为证的别名，不做推测性补录 —— 录错的代价比漏录更大",
+    "（会把 App 自己的代码判成第三方）。字段同 sdk.json，另加 note 记录取证情形。"
+  ],
+  "schema_version": 1,
+  "sdkModels": [
+    {
+      "SdkPackage": "xyz.adscope.",
+      "SdkName": "AdScope SDK Android@上海倍孜",
+      "SdkType": "广告类",
+      "author": "上海倍孜网络技术有限公司",
+      "note": "真机栈帧实证（2026-10-28，某考试题库类应用）：xyz.adscope.common.info.deviceinfo.DeviceInfoUtil"
+    },
+    {
+      "SdkPackage": "com.beizi.ad.",
+      "SdkName": "AdScope SDK Android@上海倍孜",
+      "SdkType": "广告类",
+      "author": "上海倍孜网络技术有限公司",
+      "note": "真机栈帧实证（2026-10-28，某考试题库类应用）：com.beizi.ad.lance.a.r"
+    }
+  ]
+}

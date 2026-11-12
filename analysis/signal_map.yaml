@@ -1,0 +1,1505 @@
+# ============================================================================
+# 采集信号映射表 —— 采集项 ↔ 运行时 API ↔ 个人信息类型
+# ----------------------------------------------------------------------------
+# 来源：
+#   1. 现场检测人员常用的人工采集项（2026-10-15）—— 5 列共 86 项
+#   2. GB/T 42582-2023 / 个人信息保护法 / App违法违规收集使用个人信息行为认定方法
+#   3. 196 份人工检测报告的措辞习惯（policy_alias 字段）
+#
+# 用途：
+#   - 作为 Frida 采集脚本的 hook 清单来源
+#   - 作为「实测行为 → 个人信息类型」的归一化字典（政策对齐的输入）
+#   - 作为报告输出的术语层（与人工检测的用词一致，检测人员零学习成本）
+#
+# ============================================================================
+# 【误报控制的核心机制】
+# ----------------------------------------------------------------------------
+# 「API 被调用」≠「个人信息被收集」。仅凭 hook 命中就报违规，误报率会很高。
+# 因此每条信号都标注 evidence 等级与 confirm 条件，采集时按三段式判定：
+#
+#   ① 调用发生   —— hook 命中（必要但不充分）
+#   ② 取到有效值 —— 返回值非 null / 非默认占位值（如 Android 10+ 的 IMEI 返回 null）
+#   ③ 有去向下落 —— 该值后续进入 网络上报 / 持久化存储 / 日志 / 跨进程传递
+#
+#   ① 单独成立 → 只作为「线索」，不进报告
+#   ① + ②     → 可作为「尝试收集」计入证据
+#   ① + ② + ③ → 可作为「实际收集」直接支撑结论 ← 报告只认这一档
+#
+# 返回值黑名单（取到这些值等同于没取到）：
+#   null, "", "unknown", "0", "000000000000000", "02:00:00:00:00:00",
+#   "00000000-0000-0000-0000-000000000000", "android", "1"
+# ============================================================================
+
+version: 1
+updated: "2026-10-15"
+
+meta:
+  source_ui: 人工检测采集项
+  total_ui_items: 86
+  columns: [硬件标识, 模组信息, 用户信息, 操作手机, 网络信息]
+  priority_columns: [硬件标识, 用户信息]   # 用户反馈：使用最多
+
+# ----------------------------------------------------------------------------
+# 真机验证结果（2026-10-15，Redmi K30 / Android 12 / 靶子 App bin.mt.plus）
+# ----------------------------------------------------------------------------
+verification:
+  declared_hook_points: 139
+  verified_exists: 126
+  unresolved: 13
+  unresolved_reason: "全部为第三方 SDK 类（MSA/OAID、GMS、AndroidX、OkHttp、Volley、友盟），
+    是否可解析取决于目标 App 集成了哪个 SDK —— 属预期行为，非映射表错误"
+  framework_coverage: "框架级 hook 点 100% 存在，并已取得精确重载签名"
+  requires_prefix_match: 9
+  key_finding: "java.net.HttpURLConnection 仅为抽象层，真实实现是
+    com.android.okhttp.internal.huc.HttpURLConnectionImpl / HttpsURLConnectionImpl。
+    只 hook java.net 层会漏掉大量真实请求（真机实测 com.android.okhttp 下有 134 个类）。"
+  tooling: [tools/probe_api.py, tools/discover_sdk.py, tools/verify_report.py]
+  report: analysis/signal_map_verified.md
+
+# ----------------------------------------------------------------------------
+# 匹配策略
+# ----------------------------------------------------------------------------
+match_strategies:
+  exact: 直接按类名 + 方法名 hook，适用于框架类（已全部真机验证）
+  prefix: 枚举已加载类 → 按包名前缀筛选 → 在候选类中查找目标方法后 hook。
+    适用于第三方 SDK（类名随 SDK 版本/厂商渠道变化，写死会漏报）
+  native: 通过 libc hook 文件读取并按路径过滤（CPU序列号、Boot ID）
+  arg_filter: 方法本身语义宽泛，须按参数值过滤（如 ContentResolver.query 按 Uri、Settings.Secure 按 key）
+
+# ----------------------------------------------------------------------------
+# 证据等级
+# ----------------------------------------------------------------------------
+evidence_levels:
+  A:
+    name: 直接证据
+    desc: API 语义唯一，返回值即目标数据本身
+    confirm: 返回值非空且不在黑名单内
+  B:
+    name: 条件证据
+    desc: API 语义宽泛，须结合参数或返回值进一步判定
+    confirm: 参数或返回值匹配到具体 key / 类型
+  C:
+    name: 间接证据
+    desc: 只能推断，不能单独定论；必须叠加落地或上报证据
+    confirm: ①+②+③ 三段式全部成立
+
+# ----------------------------------------------------------------------------
+# 去向下落（sink）—— 用于把「尝试收集」升级为「实际收集」
+# ----------------------------------------------------------------------------
+sinks:
+  - id: K1
+    name: 网络上报
+    api:
+      - "java.net.URL#openConnection()"
+      - "java.net.HttpURLConnection#connect()"
+      - "okhttp3.internal.connection.RealCall#execute()"
+      - "java.net.Socket#<init>()"
+    note: 最有力的证据 —— 数据离开设备。需配合 mitmproxy 确认字段内容
+  - id: K2
+    name: 持久化存储
+    api:
+      - "android.database.sqlite.SQLiteDatabase#insert()"
+      - "android.database.sqlite.SQLiteDatabase#execSQL()"
+      - "android.app.SharedPreferencesImpl$EditorImpl#putString()"
+      - "java.io.FileOutputStream#<init>()"
+    note: 数据被写入本地库/文件/SharedPrefs，说明确实留存了
+  - id: K3
+    name: 日志输出
+    api:
+      - "android.util.Log#d()"
+      - "android.util.Log#i()"
+      - "android.util.Log#e()"
+    note: 敏感数据进日志本身也是风险点，但证据力弱于 K1/K2
+  - id: K4
+    name: 跨进程传递
+    api:
+      - "android.content.Intent#putExtra()"
+      - "android.os.Bundle#putString()"
+    note: 用于判断是否传给第三方 SDK
+
+# ----------------------------------------------------------------------------
+# 个人信息类型词表（政策对齐的归一化目标）
+# ----------------------------------------------------------------------------
+pi_vocab:
+  - id: P01
+    name: 设备标识符
+    class: 一般个人信息
+    members: [IMEI, IMSI, MEID, ICCID, 硬件序列号, Android ID, OAID, VAID, AAID, GAID, MAC地址, CPU序列号, Boot ID, 蓝牙地址]
+    policy_terms: [设备标识符, 设备识别码, 设备唯一标识, 设备信息, IMEI, IMSI, Android ID, OAID, MAC地址, 广告标识符, 设备序列号, 设备标识信息, 设备唯一标识码]
+  - id: P02
+    name: 网络标识与状态
+    class: 一般个人信息
+    members: [IP地址, BSSID, SSID, WiFi列表, 网络类型, DHCP信息, 运营商]
+    policy_terms: [IP地址, WiFi信息, 网络信息, BSSID, SSID, 网络状态, 运营商信息, 接入网络]
+  - id: P03
+    name: 设备属性
+    class: 一般个人信息
+    members: [手机硬件类型, 手机模版版本, SIM卡状态, 手机Boot ID, CPU序列号]
+    # 「设备或软件信息」是中文隐私政策里最常见的写法（以观书法实测原文：
+    # 「设备或软件信息，例如…配置信息、您的IP地址和移动设备所用的版本和设备识别码」）。
+    # 只收这类**明确指向设备**的短语；「设备」「信息」这类万能词一律不进来，
+    # 否则会把真差集整片"声明掉"，那是比误报严重得多的漏报。
+    policy_terms: [设备型号, 设备信息, 设备参数, 操作系统版本, 硬件型号, 系统信息, 设备或软件信息, 设备版本, 设备配置, 硬件信息]
+  - id: P04
+    name: 位置信息
+    class: 敏感个人信息
+    members: [定位信息, 图片位置信息, 移动网参数, 扫描WiFi列表, SIM国家代码]
+    policy_terms: [位置信息, 地理位置, 定位, 精确位置, 粗略位置, 行踪轨迹, 基站信息]
+  - id: P05
+    name: 联系人
+    class: 敏感个人信息
+    members: [通讯录]
+    policy_terms: [通讯录, 联系人, 手机联系人信息]
+  - id: P06
+    name: 通信记录
+    class: 敏感个人信息
+    members: [短信记录, 通话记录, 通话记录, 接收短信]
+    policy_terms: [短信, 通话记录, 通信记录, 短信息, 通话信息]
+  - id: P07
+    name: 应用信息
+    class: 一般个人信息
+    members: [应用列表, 读取运行列表, 读指定包名]
+    policy_terms: [应用列表, 已安装应用, 软件安装列表, 运行中应用, 应用进程, 应用安装信息]
+  - id: P08
+    name: 账号信息
+    class: 一般个人信息
+    members: [Android账户, 电话号码]
+    policy_terms: [账号信息, 手机号码, 账户, 电话号码, 用户ID]
+  - id: P09
+    name: 剪贴板
+    class: 一般个人信息
+    members: [读取剪切板, 写入剪切板, 检测剪切板]
+    policy_terms: [剪切板, 剪贴板, 粘贴板信息]
+  - id: P10
+    name: 日历
+    class: 一般个人信息
+    members: [读取日历]
+    policy_terms: [日历, 日程信息]
+  - id: P11
+    name: 媒体文件
+    class: 敏感个人信息
+    members: [监听媒体库, 图片位置信息, 拍照, 录音]
+    policy_terms: [相册, 图片, 照片, 媒体文件, 音视频, 摄像头, 麦克风]
+  - id: P12
+    name: 存储文件
+    class: 一般个人信息
+    members: [读SDCard, 写SDCard, 读其他内容库]
+    policy_terms: [存储文件, 本地文件, 外部存储, 文件信息]
+  - id: P13
+    name: 传感器信息
+    class: 一般个人信息
+    members: [读取传感器]
+    policy_terms: [传感器, 传感器信息]
+  - id: P14
+    name: 邮件信息
+    class: 敏感个人信息
+    members: [读取邮件]
+    policy_terms: [邮箱, 电子邮件, 邮件信息]
+  - id: P15
+    name: 系统设置
+    class: 一般个人信息
+    members: [读系统设置, 读系统属性]
+    policy_terms: [系统设置, 系统参数, 设备设置]
+
+# ============================================================================
+# 信号明细
+# ============================================================================
+signals:
+
+# ---------------------------------------------------------------- 硬件标识
+  - id: S001
+    name: IMEI
+    group: 硬件标识
+    api:
+      - "android.telephony.TelephonyManager#getImei()"
+      - "android.telephony.TelephonyManager#getDeviceId()"
+    pi: P01
+    perm: READ_PHONE_STATE
+    evidence: A
+    confirm: 返回值非 null 且非 "unknown" 且非全 0
+    fp: 低
+    fp_note: Android 10+ 第三方应用无 READ_PRIVILEGED_PHONE_STATE，系统直接返回 null —— 取到 null 时不得计入
+    policy_alias: [IMEI, 设备识别码, 设备唯一标识符, 国际移动设备识别码]
+
+  - id: S002
+    name: IMSI
+    group: 硬件标识
+    api:
+      - "android.telephony.TelephonyManager#getSubscriberId()"
+    pi: P01
+    perm: READ_PHONE_STATE
+    evidence: A
+    confirm: 返回值非 null 且非空
+    fp: 低
+    fp_note: 同上，Android 10+ 多数返回 null
+    policy_alias: [IMSI, 用户标识, 国际移动用户识别码]
+
+  - id: S003
+    name: MEID
+    group: 硬件标识
+    api:
+      - "android.telephony.TelephonyManager#getMeid()"
+    pi: P01
+    perm: READ_PHONE_STATE
+    evidence: A
+    confirm: 返回值非 null 且非空
+    fp: 低
+    fp_note: 仅 CDMA 机型有效，GSM 机型返回 null 属正常
+    policy_alias: [MEID, 设备识别码]
+
+  - id: S004
+    name: ICCID
+    group: 硬件标识
+    api:
+      - "android.telephony.TelephonyManager#getSimSerialNumber()"
+    pi: P01
+    perm: READ_PHONE_STATE
+    evidence: A
+    confirm: 返回值非 null 且非空
+    fp: 低
+    fp_note: 无 SIM 卡时返回 null
+    policy_alias: [ICCID, SIM卡号, SIM卡序列号]
+
+  - id: S005
+    name: 硬件序列号
+    group: 硬件标识
+    api:
+      - "android.os.Build#getSerial()"
+      - "android.os.SystemProperties#get()"
+    pi: P01
+    perm: READ_PHONE_STATE (Android 10+)
+    evidence: B
+    confirm: getSerial 返回值非 "unknown"；或 SystemProperties key == "ro.serialno"
+    fp: 中
+    fp_note: Android 10+ getSerial 返回 "unknown"；SystemProperties 需按 key 过滤，否则会误报所有系统属性读取
+    policy_alias: [设备序列号, 硬件序列号, 序列号]
+
+  - id: S006
+    name: Android ID
+    group: 硬件标识
+    api:
+      - "android.provider.Settings$Secure#getString()"
+    pi: P01
+    perm: 无
+    evidence: B
+    confirm: 第二个参数严格等于 "android_id"
+    fp: 中
+    fp_note: Settings.Secure.getString 是通用方法，必须按 key 精确匹配；这是最高频的误报来源
+    policy_alias: [Android ID, 安卓ID, 设备标识符, ANDROID_ID]
+
+  - id: S007
+    name: OAID
+    group: 硬件标识
+    api:
+      - "com.bun.miitmdid.core.MdidSdkHelper#InitSdk()"
+      - "com.bun.miitmdid.interfaces.IdSupplier#getOAID()"
+    match: prefix
+    match_prefix: [com.bun.miitmdid, com.heytap.openid, com.huawei.hms.ads, com.bun.lib]
+    pi: P01
+    perm: 无
+    evidence: A
+    confirm: getOAID 返回非 null 且非空
+    fp: 低
+    fp_note: 需内置 MSA SDK 特征类；不同厂商渠道包类名有差异，建议按包名前缀 com.bun / com.heytap.openid / com.huawei.hms.ads 泛匹配
+    policy_alias: [OAID, 匿名设备标识符, 设备标识符]
+
+  - id: S008
+    name: VAID
+    group: 硬件标识
+    api:
+      - "com.bun.miitmdid.interfaces.IdSupplier#getVAID()"
+      - "com.vivo.identifier.IdentifierIdClient#getIdentifier()"
+    match: prefix
+    match_prefix: [com.bun.miitmdid, com.vivo.identifier]
+    pi: P01
+    perm: 无
+    evidence: A
+    confirm: 返回值非 null 且非空
+    fp: 低
+    fp_note: 仅 vivo 渠道有值
+    policy_alias: [VAID, 设备标识符]
+
+  - id: S009
+    name: AAID
+    group: 硬件标识
+    api:
+      - "com.bun.miitmdid.interfaces.IdSupplier#getAAID()"
+      - "com.asus.msa.SupplementaryDID.SupplementaryDIDManager#getAAID()"
+    match: prefix
+    match_prefix: [com.bun.miitmdid, com.asus.msa]
+    pi: P01
+    perm: 无
+    evidence: A
+    confirm: 返回值非 null 且非空
+    fp: 低
+    fp_note: 仅华硕渠道有值
+    policy_alias: [AAID, 设备标识符]
+
+  - id: S010
+    name: GAID
+    group: 硬件标识
+    api:
+      - "com.google.android.gms.ads.identifier.AdvertisingIdClient#getAdvertisingIdInfo()"
+    match: prefix
+    match_prefix: [com.google.android.gms.ads]
+    pi: P01
+    perm: 无
+    evidence: A
+    confirm: 返回的 AdvertisingIdClient.Info#getId() 非 null 且非全 0 UUID
+    fp: 低
+    fp_note: 无 GMS 的设备返回异常，需容错
+    policy_alias: [GAID, 广告标识符, Google Advertising ID, 广告ID]
+
+  - id: S011
+    name: MAC地址
+    group: 硬件标识
+    api:
+      - "android.net.wifi.WifiInfo#getMacAddress()"
+      - "java.net.NetworkInterface#getHardwareAddress()"
+    pi: P01
+    perm: ACCESS_WIFI_STATE
+    evidence: B
+    confirm: 返回值非 "02:00:00:00:00:00"
+    fp: 中
+    fp_note: Android 6+ 该 API 固定返回 02:00:00:00:00:00（即已被系统阻断）。若 App 仅调到该 API 但取到占位值，属"尝试收集"而非"实际收集"。真实 MAC 需 native 读 /sys/class/net/*/address，判定难度大
+    policy_alias: [MAC地址, 网卡地址, 物理地址]
+
+  - id: S012
+    name: BSSID
+    group: 硬件标识
+    api:
+      - "android.net.wifi.WifiInfo#getBSSID()"
+    pi: P02
+    perm: ACCESS_FINE_LOCATION (Android 8.1+)
+    evidence: A
+    confirm: 返回值非 null 且非 "02:00:00:00:00:00"
+    fp: 低
+    fp_note: 无
+    policy_alias: [BSSID, WiFi名称, 路由器标识]
+
+  - id: S013
+    name: SSID
+    group: 硬件标识
+    api:
+      - "android.net.wifi.WifiInfo#getSSID()"
+    pi: P02
+    perm: ACCESS_FINE_LOCATION (Android 8.1+)
+    evidence: A
+    confirm: 返回值非 null 且非 "<unknown ssid>"
+    fp: 低
+    fp_note: 未连接 WiFi 时返回 <unknown ssid>，需过滤
+    policy_alias: [SSID, WiFi名称, 无线网络名称]
+
+  - id: S014
+    name: CPU序列号
+    group: 硬件标识
+    api:
+      - "libc.so#fopen()"
+      - "libc.so#open()"
+    arg_filter: /proc/cpuinfo
+    pi: P01
+    perm: 无
+    evidence: C
+    confirm: 文件路径为 /proc/cpuinfo 且读取到 Serial 字段
+    fp: 高
+    fp_note: 只能 hook native 文件读取并按路径过滤；Java 层完全看不到。若不做路径过滤会误报所有文件读取
+    policy_alias: [CPU序列号, 设备序列号]
+
+  - id: S015
+    name: 手机Boot ID
+    group: 硬件标识
+    api:
+      - "libc.so#fopen()"
+      - "libc.so#open()"
+    arg_filter: /proc/sys/kernel/random/boot_id
+    pi: P03
+    perm: 无
+    evidence: C
+    confirm: 文件路径严格等于 /proc/sys/kernel/random/boot_id
+    fp: 中
+    fp_note: 路径唯一，按路径过滤后误报低；但需 native hook
+    policy_alias: [Boot ID, 设备标识符]
+
+  - id: S016
+    name: 本机IP地址
+    group: 硬件标识
+    api:
+      - "android.net.wifi.WifiInfo#getIpAddress()"
+      - "java.net.NetworkInterface#getInetAddresses()"
+      - "java.net.InetAddress#getLocalHost()"
+    pi: P02
+    perm: ACCESS_WIFI_STATE / INTERNET
+    evidence: B
+    confirm: 返回值非 0（WifiInfo 返回 int 形式，0 表示未分配）
+    fp: 中
+    fp_note: 网络库（OkHttp/HttpClient）内部会大量调用，需按调用栈过滤掉框架内部调用
+    policy_alias: [IP地址, 网络地址, 设备IP]
+
+  - id: S017
+    name: 蓝牙名称
+    group: 硬件标识
+    api:
+      - "android.bluetooth.BluetoothAdapter#getName()"
+      - "android.bluetooth.BluetoothAdapter#getAddress()"
+    pi: P01
+    perm: BLUETOOTH / BLUETOOTH_CONNECT (Android 12+)
+    evidence: A
+    confirm: 返回值非 null
+    fp: 低
+    fp_note: Android 12+ 需 BLUETOOTH_CONNECT，无权限时抛异常
+    policy_alias: [蓝牙名称, 蓝牙地址, 蓝牙信息]
+
+# ---------------------------------------------------------------- 模组信息
+  - id: S020
+    name: 运营商信息
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#getNetworkOperatorName()"
+      - "android.telephony.TelephonyManager#getSimOperator()"
+      - "android.telephony.TelephonyManager#getNetworkOperator()"
+    pi: P02
+    perm: 无
+    evidence: A
+    confirm: 返回值非空
+    fp: 低
+    fp_note: 无
+    policy_alias: [运营商信息, 运营商, 网络运营商]
+
+  - id: S021
+    name: 手机硬件类型
+    group: 模组信息
+    api:
+      - "android.os.Build#<get:MODEL>()"
+      - "android.os.Build#<get:BRAND>()"
+      - "android.os.Build#<get:MANUFACTURER>()"
+      - "android.os.Build#<get:HARDWARE>()"
+    pi: P03
+    perm: 无
+    evidence: A
+    confirm: 字段被读取
+    fp: 低
+    fp_note: Build 字段读取极其普遍，需按"是否进入上报/存储"二次筛选，否则会淹没报告
+    policy_alias: [设备型号, 设备信息, 硬件型号, 手机型号]
+
+  - id: S022
+    name: 手机网络类型
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#getNetworkType()"
+      - "android.net.ConnectivityManager#getActiveNetworkInfo()"
+    pi: P02
+    perm: ACCESS_NETWORK_STATE
+    evidence: A
+    confirm: 被调用且返回值有效
+    fp: 低
+    fp_note: 高频调用，通常由网络库触发，需按调用栈过滤
+    policy_alias: [网络类型, 网络状态, 网络信息]
+
+  - id: S023
+    name: 手机服务状态
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#getServiceState()"
+    pi: P03
+    perm: READ_PHONE_STATE
+    evidence: A
+    confirm: 返回值非 null
+    fp: 低
+    fp_note: 无
+    policy_alias: [设备信息, 网络信息]
+
+  - id: S024
+    name: 手机模版版本
+    group: 模组信息
+    api:
+      - "android.os.Build$VERSION#<get:RELEASE>()"
+      - "android.os.Build#<get:FINGERPRINT>()"
+      - "android.os.Build#<get:DISPLAY>()"
+    pi: P03
+    perm: 无
+    evidence: A
+    confirm: 字段被读取
+    fp: 低
+    fp_note: 同 S021，需二次筛选
+    policy_alias: [操作系统版本, 系统版本, 设备信息]
+
+  - id: S025
+    name: SIM卡状态
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#getSimState()"
+      - "android.telephony.TelephonyManager#getSimOperatorName()"
+    pi: P03
+    perm: 无（getSimState）
+    evidence: A
+    confirm: 返回值非 SIM_STATE_UNKNOWN
+    fp: 低
+    fp_note: 无
+    policy_alias: [SIM卡状态, SIM信息, 设备信息]
+
+  - id: S026
+    name: SIM国家代码
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#getSimCountryIso()"
+      - "android.telephony.TelephonyManager#getNetworkCountryIso()"
+    pi: P04
+    perm: 无
+    evidence: A
+    confirm: 返回值非空
+    fp: 低
+    fp_note: 可推断大致地域，归入位置类
+    policy_alias: [国家代码, 地区信息, 位置信息]
+
+  - id: S027
+    name: 移动网参数
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#getCellLocation()"
+      - "android.telephony.TelephonyManager#getAllCellInfo()"
+      - "android.telephony.TelephonyManager#getNeighboringCellInfo()"
+    pi: P04
+    perm: ACCESS_FINE_LOCATION (Android 12+ 需高精度)
+    evidence: A
+    confirm: 返回值非 null 且列表非空
+    fp: 低
+    fp_note: 基站信息可反推位置，属位置类高价值信号
+    policy_alias: [基站信息, 位置信息, 网络信息]
+
+  - id: S028
+    name: 网络接入标识
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#getDataState()"
+      - "android.net.NetworkCapabilities#<get:TRANSPORT_WIFI>()"
+    pi: P02
+    perm: READ_PHONE_STATE / ACCESS_NETWORK_STATE
+    evidence: B
+    confirm: 被调用且返回值有效
+    fp: 中
+    fp_note: 与 S022 重叠，建议合并上报，避免同一行为重复计数
+    policy_alias: [网络接入方式, 网络信息]
+
+  - id: S029
+    name: 语音信箱信息
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#getVoiceMailNumber()"
+      - "android.telephony.TelephonyManager#getVoiceMailAlphaTag()"
+    pi: P08
+    perm: READ_PHONE_STATE
+    evidence: A
+    confirm: 返回值非 null 且非空
+    fp: 低
+    fp_note: 无
+    policy_alias: [语音信箱, 电话号码]
+
+  - id: S030
+    name: 手机漫游标识
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#isNetworkRoaming()"
+    pi: P02
+    perm: READ_PHONE_STATE
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 单个布尔值，证据力弱，建议仅作为辅助信息
+    policy_alias: [漫游状态, 网络信息]
+
+  - id: S031
+    name: 监听电话状态
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#listen()"
+    pi: P02
+    perm: READ_PHONE_STATE
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 无
+    policy_alias: [电话状态, 电话信息]
+
+  - id: S032
+    name: 拨打电话
+    group: 模组信息
+    api:
+      - "android.content.Context#startActivity()"
+    arg_filter: "android.intent.action.CALL"
+    pi: null
+    perm: CALL_PHONE
+    evidence: B
+    confirm: Intent action == "android.intent.action.CALL" 或 "android.intent.action.DIAL"
+    fp: 中
+    fp_note: 必须按 action 精确匹配，否则 startActivity 是极高频方法
+    policy_alias: [拨打电话, 电话权限]
+
+  - id: S033
+    name: 发送短信
+    group: 模组信息
+    api:
+      - "android.telephony.SmsManager#sendTextMessage()"
+      - "android.telephony.SmsManager#sendMultipartTextMessage()"
+    pi: P06
+    perm: SEND_SMS
+    evidence: A
+    confirm: 被调用且目标号码非空
+    fp: 低
+    fp_note: 无
+    policy_alias: [发送短信, 短信权限]
+
+  - id: S034
+    name: 接收短信
+    group: 模组信息
+    api:
+      - "android.content.ContextWrapper#registerReceiver()"
+    arg_filter: "android.provider.Telephony.SMS_RECEIVED"
+    pi: P06
+    perm: RECEIVE_SMS
+    evidence: B
+    confirm: IntentFilter action == "android.provider.Telephony.SMS_RECEIVED"
+    fp: 中
+    fp_note: registerReceiver 极高频，必须按 action 过滤
+    policy_alias: [短信, 接收短信]
+
+  - id: S035
+    name: 电话号码
+    group: 模组信息
+    api:
+      - "android.telephony.TelephonyManager#getLine1Number()"
+    pi: P08
+    perm: READ_PHONE_STATE
+    evidence: A
+    confirm: 返回值非 null 且非空
+    fp: 低
+    fp_note: 属敏感个人信息（手机号），命中后单独提升风险等级
+    policy_alias: [手机号码, 电话号码, 手机号]
+
+  - id: S036
+    name: 读取传感器
+    group: 模组信息
+    api:
+      - "android.hardware.SystemSensorManager#registerListenerImpl()"
+      # ★ 采集脚本 hook 的是公开方法 registerListener（框架内部再转
+      #   registerListenerImpl），只登记 Impl 会让 api 匹配整场落空，
+      #   只能退回事件自带的 signal 字段 —— 那个字段写错时（曾误写成
+      #   S060 写SDCard）就整批算成"收集了存储文件"。两个都登记。
+      - "android.hardware.SystemSensorManager#registerListener()"
+      - "android.hardware.SensorManager#registerListener()"
+      - "android.hardware.SystemSensorManager#getDefaultSensor()"
+    pi: P13
+    perm: 无
+    evidence: A
+    confirm: 注册成功且传感器类型非空
+    fp: 低
+    fp_note: 必须 hook 实现类 SystemSensorManager，hook 抽象基类 SensorManager 不会命中
+    policy_alias: [传感器信息, 传感器]
+
+# ---------------------------------------------------------------- 用户信息
+  - id: S040
+    name: 短信记录
+    group: 用户信息
+    api:
+      - "android.content.ContentResolver#query()"
+    arg_filter: "content://sms"
+    pi: P06
+    perm: READ_SMS
+    evidence: B
+    confirm: Uri 以 content://sms 开头
+    fp: 中
+    fp_note: query 是通用方法，必须按 Uri 前缀匹配。属敏感个人信息，命中即高风险
+    policy_alias: [短信, 短信记录, 短信息]
+
+  - id: S041
+    name: 通话记录
+    group: 用户信息
+    api:
+      - "android.content.ContentResolver#query()"
+    arg_filter: "content://call_log"
+    pi: P06
+    perm: READ_CALL_LOG
+    evidence: B
+    confirm: Uri 以 content://call_log 开头
+    fp: 中
+    fp_note: 同上，按 Uri 前缀匹配
+    policy_alias: [通话记录, 通信记录]
+
+  - id: S042
+    name: 通讯录
+    group: 用户信息
+    api:
+      - "android.content.ContentResolver#query()"
+    arg_filter: "content://com.android.contacts"
+    pi: P05
+    perm: READ_CONTACTS
+    evidence: B
+    confirm: Uri 以 content://com.android.contacts 开头
+    fp: 中
+    fp_note: 同上
+    policy_alias: [通讯录, 联系人]
+
+  - id: S043
+    name: 定位信息
+    group: 用户信息
+    api:
+      - "android.location.LocationManager#requestLocationUpdates()"
+      - "android.location.LocationManager#getLastKnownLocation()"
+      - "android.location.LocationManager#getCurrentLocation()"
+      - "android.location.Location#getLatitude()"
+      - "android.location.Location#getLongitude()"
+      - "com.google.android.gms.location.FusedLocationProviderClient#getLastLocation()"
+    match: prefix
+    match_prefix: [com.google.android.gms.location]
+    pi: P04
+    perm: ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION
+    evidence: A
+    confirm: 返回值非 null 且经纬度非 0,0
+    fp: 低
+    fp_note: 注意区分「申请定位权限」与「实际拿到定位」——只有后者才算收集。GPS 未开启时回调返回 null
+    policy_alias: [位置信息, 地理位置, 定位, 行踪轨迹]
+
+  - id: S044
+    name: 图片位置信息
+    group: 用户信息
+    api:
+      - "android.media.ExifInterface#getLatLong()"
+      - "android.media.ExifInterface#getAttribute()"
+    pi: P04
+    perm: 读存储权限
+    evidence: A
+    confirm: getAttribute 参数为 TAG_GPS_LATITUDE/LONGITUDE 且返回值非空
+    fp: 低
+    fp_note: 无
+    policy_alias: [位置信息, 图片信息, 照片信息]
+
+  - id: S045
+    name: 解析位置参数
+    group: 用户信息
+    api:
+      - "android.location.Geocoder#getFromLocation()"
+      - "android.location.Geocoder#getFromLocationName()"
+    pi: P04
+    perm: 无（但输入本身是位置）
+    evidence: A
+    confirm: 被调用且输入含经纬度
+    fp: 低
+    fp_note: 说明 App 已在处理坐标 → 反向印证定位收集
+    policy_alias: [位置信息, 地址信息]
+
+  - id: S046
+    name: 读取剪切板
+    group: 用户信息
+    api:
+      - "android.content.ClipboardManager#getPrimaryClip()"
+      - "android.content.ClipboardManager#getText()"
+    pi: P09
+    perm: 无（后台读取受限）
+    evidence: A
+    confirm: 返回值非 null
+    fp: 低
+    fp_note: Android 10+ 后台读取剪贴板受限，取到 null 属系统拦截
+    policy_alias: [剪切板, 剪贴板]
+
+  - id: S047
+    name: 写入剪切板
+    group: 用户信息
+    api:
+      - "android.content.ClipboardManager#setPrimaryClip()"
+    pi: P09
+    perm: 无
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 写入通常不构成"收集"，但若写入的是用户输入内容且被后续读取，则形成链路
+    policy_alias: [剪切板]
+
+  - id: S048
+    name: 检测剪切板
+    group: 用户信息
+    api:
+      - "android.content.ClipboardManager#hasPrimaryClip()"
+      - "android.content.ClipboardManager#getPrimaryClipDescription()"
+    pi: P09
+    perm: 无
+    evidence: B
+    confirm: 被调用
+    fp: 中
+    fp_note: 只读描述（如 MIME 类型）严格说不算收集内容，证据力弱于 S046，建议单列
+    policy_alias: [剪切板]
+
+  - id: S049
+    name: Android账户
+    group: 用户信息
+    api:
+      - "android.accounts.AccountManager#getAccounts()"
+      - "android.accounts.AccountManager#getAccountsByType()"
+    pi: P08
+    perm: GET_ACCOUNTS
+    evidence: A
+    confirm: 返回数组非空
+    fp: 低
+    fp_note: 无
+    policy_alias: [账号信息, 账户信息]
+
+  - id: S050
+    name: 读取日历
+    group: 用户信息
+    api:
+      - "android.content.ContentResolver#query()"
+    arg_filter: "content://com.android.calendar"
+    pi: P10
+    perm: READ_CALENDAR
+    evidence: B
+    confirm: Uri 以 content://com.android.calendar 开头
+    fp: 中
+    fp_note: 按 Uri 前缀匹配
+    policy_alias: [日历, 日程]
+
+  - id: S051
+    name: 监听媒体库
+    group: 用户信息
+    api:
+      - "android.content.ContentResolver#registerContentObserver()"
+      - "android.content.ContentResolver#query()"
+    arg_filter: "content://media"
+    pi: P11
+    perm: READ_EXTERNAL_STORAGE / READ_MEDIA_IMAGES
+    evidence: B
+    confirm: Uri 以 content://media 开头
+    fp: 中
+    fp_note: registerContentObserver 命中表示长期监听相册变化，证据力强于一次性 query
+    policy_alias: [相册, 图片, 媒体文件, 照片]
+
+  - id: S052
+    name: 应用列表
+    group: 用户信息
+    api:
+      - "android.app.ApplicationPackageManager#getInstalledPackages()"
+      - "android.app.ApplicationPackageManager#getInstalledApplications()"
+      - "android.app.ApplicationPackageManager#getPackagesForUid()"
+    pi: P07
+    perm: QUERY_ALL_PACKAGES (Android 11+)
+    evidence: A
+    confirm: 返回列表非空
+    fp: 低
+    fp_note: 必须 hook 实现类 ApplicationPackageManager，hook 抽象基类 PackageManager 不会命中（这是最容易踩的坑）
+    policy_alias: [应用列表, 已安装应用, 软件安装列表, 设备上安装的应用]
+
+  - id: S053
+    name: 读指定包名
+    group: 用户信息
+    api:
+      - "android.app.ApplicationPackageManager#getPackageInfo()"
+      - "android.app.ApplicationPackageManager#getApplicationInfo()"
+    pi: P07
+    perm: 无（Android 11+ 需 <queries> 声明）
+    evidence: B
+    confirm: 包名参数非空
+    fp: 中
+    fp_note: 读单个包名（如判断是否装了微信）与读全量列表性质不同，证据力弱，建议与 S052 分级上报，避免误报
+    policy_alias: [应用列表, 应用信息]
+
+  - id: S054
+    name: 读取运行列表
+    group: 用户信息
+    api:
+      - "android.app.ActivityManager#getRunningAppProcesses()"
+      - "android.app.ActivityManager#getRunningTasks()"
+      - "android.app.ActivityManager#getRunningServices()"
+    pi: P07
+    perm: 无（Android 5.1+ 仅返回自身）
+    evidence: A
+    confirm: 返回列表非空
+    fp: 低
+    fp_note: Android 5.1+ 对第三方应用只返回自身进程，取到仅含自身的结果时价值有限，可标注
+    policy_alias: [运行中应用, 应用进程, 应用列表]
+
+  - id: S055
+    name: 读系统属性
+    group: 用户信息
+    api:
+      - "android.os.SystemProperties#get()"
+      - "android.os.SystemProperties#getInt()"
+      - "android.provider.Settings$System#getString()"
+      - "android.provider.Settings$Global#getString()"
+    pi: P15
+    perm: 无
+    evidence: B
+    confirm: 按 key 白名单过滤（ro.serialno / android_id / device_name / bluetooth_name 等）
+    fp: 高
+    fp_note: 建议只上报白名单内的 key，其余归入"其他系统属性"低优先队列。这是误报密度最高的一类
+    policy_alias: [系统信息, 设备信息, 系统参数]
+
+  - id: S056
+    name: 读其他内容库
+    group: 用户信息
+    api:
+      - "android.content.ContentResolver#query()"
+    arg_filter: "其他 content:// Uri"
+    pi: P12
+    perm: 视 Uri 而定
+    evidence: C
+    confirm: Uri 不在已识别列表中，需人工归类
+    fp: 高
+    fp_note: 第三方 SDK 私有 Provider 难以枚举，先归入待归类队列交由人工或 AI 判定
+    policy_alias: [其他信息]
+
+# ---------------------------------------------------------------- 操作手机
+  - id: S060
+    name: 写SDCard
+    group: 操作手机
+    api:
+      - "java.io.FileOutputStream#<init>()"
+      - "java.io.FileWriter#<init>()"
+    pi: P12
+    perm: WRITE_EXTERNAL_STORAGE (Android 10 以下)
+    evidence: C
+    confirm: 路径位于外部存储 且 写入内容含敏感字段
+    fp: 高
+    fp_note: 文件写入极高频，若不做路径与内容过滤会严重误报。仅在写入内容命中敏感字段时才上报
+    policy_alias: [存储权限, 本地存储, 文件]
+
+  - id: S061
+    name: 读SDCard
+    group: 操作手机
+    api:
+      - "android.os.Environment#getExternalStorageDirectory()"
+      - "android.os.Environment#getExternalStoragePublicDirectory()"
+      - "java.io.FileInputStream#<init>()"
+    pi: P12
+    perm: READ_EXTERNAL_STORAGE
+    evidence: B
+    confirm: 调用后确实发生读取且路径位于外部存储
+    fp: 中
+    fp_note: getExternalStorageDirectory 常被用于取缓存目录，仅调用不算收集，需确认后续有实际读取
+    policy_alias: [存储权限, 本地文件, 外部存储]
+
+  - id: S062
+    name: 数据加解密
+    group: 操作手机
+    api:
+      - "javax.crypto.Cipher#doFinal()"
+      - "javax.crypto.Cipher#init()"
+      - "java.security.MessageDigest#digest()"
+    pi: null
+    perm: 无
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 这是【正向】证据 —— 说明 App 对数据做了加密处理，可用于反驳"未采取加密措施"的指控，不要当作违规上报
+    policy_alias: [加密, 脱敏, 安全措施]
+
+  - id: S063
+    name: SQLite数据库
+    group: 操作手机
+    api:
+      - "android.database.sqlite.SQLiteDatabase#openOrCreateDatabase()"
+      - "android.database.sqlite.SQLiteDatabase#execSQL()"
+      - "android.database.sqlite.SQLiteDatabase#insert()"
+    pi: null
+    perm: 无
+    evidence: B
+    confirm: 写入内容含敏感字段
+    fp: 中
+    fp_note: 属 sink（K2），用于把"尝试收集"升级为"实际收集"，本身不是个人信息类型
+    policy_alias: [本地存储]
+
+  - id: S064
+    name: SharedPrefs
+    group: 操作手机
+    api:
+      - "android.app.SharedPreferencesImpl$EditorImpl#putString()"
+      - "android.app.SharedPreferencesImpl#getString()"
+    pi: null
+    perm: 无
+    evidence: B
+    confirm: key 或 value 命中敏感字段
+    fp: 中
+    fp_note: 同上，sink 性质。判断"是否持久化留存了个人信息"的关键证据
+    policy_alias: [本地存储]
+
+  - id: S065
+    name: 录音
+    group: 操作手机
+    api:
+      - "android.media.MediaRecorder#start()"
+      - "android.media.AudioRecord#startRecording()"
+      - "android.media.AudioRecord#$init()"
+    pi: P11
+    perm: RECORD_AUDIO
+    evidence: A
+    confirm: 被调用且麦克风权限已授予
+    fp: 低
+    fp_note: 属敏感个人信息，命中即高风险
+    policy_alias: [录音, 麦克风, 音频, 语音]
+
+  - id: S066
+    name: 拍照
+    group: 操作手机
+    api:
+      - "android.hardware.Camera#takePicture()"
+      - "android.hardware.Camera#open()"
+      - "android.hardware.camera2.CameraCaptureSession#setRepeatingRequest()"
+    pi: P11
+    perm: CAMERA
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 需区分"打开相机预览"与"实际取到图像"
+    policy_alias: [相机, 拍照, 摄像头, 照片]
+
+  - id: S067
+    name: 执行Shell命令
+    group: 操作手机
+    api:
+      - "java.lang.Runtime#exec()"
+      - "java.lang.ProcessBuilder#start()"
+    pi: null
+    perm: 无
+    evidence: B
+    confirm: 命令字符串非空
+    fp: 中
+    fp_note: 大量第三方库用它做运行环境探测，需记录具体命令内容，无法识别的命令归入低优先队列
+    policy_alias: [设备信息, 系统信息]
+
+  - id: S068
+    name: 创建通知渠道
+    group: 操作手机
+    api:
+      - "android.app.NotificationManager#createNotificationChannel()"
+    pi: null
+    perm: 无
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 与个人信息收集无直接关系，主要用于还原 App 行为时间线
+    policy_alias: []
+
+  - id: S069
+    name: 申请敏感权限
+    group: 操作手机
+    api:
+      - "android.app.Activity#requestPermissions()"
+      - "androidx.core.app.ActivityCompat#requestPermissions()"
+    match: prefix
+    match_prefix: [androidx.core.app]
+    pi: null
+    perm: 无
+    evidence: A
+    confirm: 被调用，记录权限名与当时的界面
+    fp: 低
+    fp_note: 核心信号 —— 用于判定「未同步告知目的」（Q040）与「提前索要非当前功能权限」（Q012）。必须同时记录调用时的界面归属
+    policy_alias: [权限申请]
+
+  - id: S070
+    name: 检查权限状态
+    group: 操作手机
+    api:
+      - "android.content.Context#checkPermission()"
+      - "androidx.core.content.ContextCompat#checkSelfPermission()"
+    match: prefix
+    match_prefix: [androidx.core.content]
+    pi: null
+    perm: 无
+    evidence: B
+    confirm: 被调用
+    fp: 中
+    fp_note: 仅检查不构成收集，但可反映 App 的权限策略，建议作为辅助证据
+    policy_alias: []
+
+  - id: S071
+    name: 加载应用插件
+    group: 操作手机
+    api:
+      - "dalvik.system.DexClassLoader#<init>()"
+      - "dalvik.system.PathClassLoader#<init>()"
+    pi: null
+    perm: 无
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 插件化会绕过静态分析，出现该信号提示需加强动态覆盖
+    policy_alias: []
+
+  - id: S072
+    name: 获取Root权限
+    group: 操作手机
+    api:
+      - "java.lang.Runtime#exec()"
+    arg_filter: "su"
+    pi: null
+    perm: 无
+    evidence: A
+    confirm: 命令首词为 "su"
+    fp: 低
+    fp_note: 极少出现，出现即高度可疑
+    policy_alias: []
+
+  - id: S073
+    name: 安装应用
+    group: 操作手机
+    api:
+      - "android.content.pm.PackageInstaller#createSession()"
+      - "android.content.Context#startActivity()"
+    arg_filter: "android.intent.action.INSTALL_PACKAGE"
+    pi: null
+    perm: REQUEST_INSTALL_PACKAGES
+    evidence: B
+    confirm: Intent action 精确匹配
+    fp: 中
+    fp_note: 按 action 过滤
+    policy_alias: []
+
+  - id: S074
+    name: 读系统设置
+    group: 操作手机
+    api:
+      - "android.provider.Settings$System#getString()"
+      - "android.provider.Settings$Secure#getString()"
+      - "android.provider.Settings$Global#getString()"
+    pi: P15
+    perm: 无
+    evidence: B
+    confirm: 按 key 白名单过滤，android_id / bluetooth_name / device_name 等命中
+    fp: 高
+    fp_note: 与 S006、S055 高度重叠，需统一到同一过滤规则，否则同一行为会重复计数导致误报
+    policy_alias: [系统设置, 设备信息]
+
+  - id: S075
+    name: 收发系统广播
+    group: 操作手机
+    api:
+      - "android.content.ContextWrapper#sendBroadcast()"
+      - "android.content.ContextWrapper#registerReceiver()"
+    pi: null
+    perm: 无
+    evidence: B
+    confirm: 按 action 白名单过滤（含设备标识/网络/位置语义的 action）
+    fp: 高
+    fp_note: 广播调用量极大，不过滤会严重污染。仅保留与个人信息相关的 action
+    policy_alias: []
+
+  - id: S076
+    name: 中断系统广播
+    group: 操作手机
+    api:
+      - "android.content.BroadcastReceiver#abortBroadcast()"
+    pi: null
+    perm: 无
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 属行为特征，与合规判定无直接关系，仅作技术画像
+    policy_alias: []
+
+# ---------------------------------------------------------------- 网络信息
+  - id: S080
+    name: 原始网络包
+    group: 网络信息
+    api:
+      - "java.net.Socket#<init>()"
+      - "java.net.DatagramSocket#send()"
+    match: exact
+    pi: null
+    perm: INTERNET
+    evidence: C
+    confirm: 结合 mitmproxy 确认包内容
+    fp: 高
+    fp_note: 仅表示发生了网络通信，不能推断是否上报个人信息。必须与 S081 及流量内容联合判定
+    policy_alias: []
+
+  - id: S081
+    name: HTTP访问
+    group: 网络信息
+    api:
+      - "java.net.HttpURLConnection#connect()"
+      - "com.android.okhttp.internal.huc.HttpURLConnectionImpl#connect()"
+      - "com.android.okhttp.internal.huc.HttpsURLConnectionImpl#connect()"
+      - "okhttp3.internal.connection.RealCall#execute()"
+      - "com.android.volley.toolbox.HurlStack#execute()"
+    match: prefix
+    match_prefix: [com.android.okhttp, okhttp3, com.android.volley]
+    verified: "2026-10-15 真机确认：java.net.HttpURLConnection 仅为抽象层，真实实现为 com.android.okhttp.internal.huc.HttpURLConnectionImpl / HttpsURLConnectionImpl（Android 12 实测存在，共 134 个 com.android.okhttp 类）。只 hook java.net 层会漏掉大量请求，必须同时 hook 这两个类。"
+    pi: null
+    perm: INTERNET
+    evidence: C
+    confirm: 需截获请求体并匹配敏感字段
+    fp: 高
+    fp_note: 这是判定"数据出境/第三方共享"的入口，但必须配合 mitmproxy 解密与字段分析，单靠 hook 无法定论
+    policy_alias: [数据共享, 第三方]
+
+  - id: S082
+    name: 网络调用
+    group: 网络信息
+    api:
+      - "java.net.URL#openConnection()"
+      - "java.net.URL#openStream()"
+    match: exact
+    pi: null
+    perm: INTERNET
+    evidence: C
+    confirm: 同 S081
+    fp: 高
+    fp_note: 与 S080/S081 合并统计，避免同一请求三次计数
+    policy_alias: []
+
+  - id: S083
+    name: 浏览器访问
+    group: 网络信息
+    api:
+      - "android.content.Context#startActivity()"
+    arg_filter: "android.intent.action.VIEW + http"
+    pi: null
+    perm: 无
+    evidence: B
+    confirm: Intent action 为 VIEW 且 data 为 http(s)://
+    fp: 中
+    fp_note: 按 action + scheme 双重过滤
+    policy_alias: []
+
+  - id: S084
+    name: 读取上网记录
+    group: 网络信息
+    api:
+      - "android.content.ContentResolver#query()"
+    arg_filter: "content://com.android.browser"
+    pi: P12
+    perm: 读浏览器历史权限
+    evidence: B
+    confirm: Uri 匹配浏览器书签/历史 Provider
+    fp: 中
+    fp_note: 现代 App 极少使用，命中即值得关注
+    policy_alias: [上网记录, 浏览记录]
+
+  - id: S085
+    name: DNS解析
+    group: 网络信息
+    api:
+      - "java.net.InetAddress#getAllByName()"
+      - "java.net.InetAddress#getByName()"
+    pi: null
+    perm: INTERNET
+    evidence: C
+    confirm: 记录域名
+    fp: 高
+    fp_note: 主要价值是还原 App 联系的域名清单（辅助第三方共享判定），不构成个人信息收集本身
+    policy_alias: []
+
+  - id: S086
+    name: 发敏感词
+    group: 网络信息
+    api:
+      - "java.net.HttpURLConnection#getOutputStream()"
+      - "com.android.okhttp.okio.Buffer#writeUtf8()"
+      - "okio.Buffer#writeUtf8()"
+    match: prefix
+    match_prefix: [com.android.okhttp.okio, okio]
+    pi: null
+    perm: INTERNET
+    evidence: C
+    confirm: 请求体命中敏感字段词表（手机号/身份证/设备号等）
+    fp: 高
+    fp_note: 需明文或已解密的流量。若为 HTTPS 且证书固定，需 Frida 绕过 pinning 才能判定
+    policy_alias: [数据上报, 个人信息传输]
+
+  - id: S087
+    name: 扫描WiFi列表
+    group: 网络信息
+    api:
+      - "android.net.wifi.WifiManager#getScanResults()"
+      - "android.net.wifi.WifiManager#startScan()"
+    pi: P04
+    perm: ACCESS_FINE_LOCATION (Android 6+)
+    evidence: A
+    confirm: 返回列表非空
+    fp: 低
+    fp_note: WiFi 列表可反推位置，属位置类信号，证据力强于 SSID 单点
+    policy_alias: [WiFi列表, 位置信息, 网络信息]
+
+  - id: S088
+    name: 改变WiFi状态
+    group: 网络信息
+    api:
+      - "android.net.wifi.WifiManager#setWifiEnabled()"
+    pi: null
+    perm: CHANGE_WIFI_STATE
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 行为特征，非个人信息收集
+    policy_alias: []
+
+  - id: S089
+    name: 读取WiFi参数
+    group: 网络信息
+    api:
+      - "android.net.wifi.WifiManager#getConnectionInfo()"
+    pi: P02
+    perm: ACCESS_WIFI_STATE
+    evidence: B
+    confirm: 取到的对象中 BSSID/SSID/MAC 字段被后续读取
+    fp: 中
+    fp_note: getConnectionInfo 本身只是取对象，真正敏感的是后续 getBSSID/getSSID/getMacAddress —— 应与 S011/S012/S013 归并，避免同一行为重复计数
+    policy_alias: [WiFi信息, 网络信息]
+
+  - id: S090
+    name: 读取WiFi状态
+    group: 网络信息
+    api:
+      - "android.net.wifi.WifiManager#getWifiState()"
+      - "android.net.wifi.WifiManager#isWifiEnabled()"
+    pi: P02
+    perm: ACCESS_WIFI_STATE
+    evidence: B
+    confirm: 被调用
+    fp: 中
+    fp_note: 仅状态布尔值，证据力弱，建议只作背景信息
+    policy_alias: [WiFi状态, 网络信息]
+
+  - id: S091
+    name: DHCP信息
+    group: 网络信息
+    api:
+      - "android.net.wifi.WifiManager#getDhcpInfo()"
+    pi: P02
+    perm: ACCESS_WIFI_STATE
+    evidence: A
+    confirm: 返回值非 null 且 ipAddress != 0
+    fp: 低
+    fp_note: 含本机 IP / DNS / 网关，属网络标识信息
+    policy_alias: [IP地址, 网络信息]
+
+  - id: S092
+    name: 改变网络类型
+    group: 网络信息
+    api:
+      - "android.net.ConnectivityManager#requestNetwork()"
+      - "android.net.ConnectivityManager#setNetworkPreference()"
+    pi: null
+    perm: CHANGE_NETWORK_STATE
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 行为特征
+    policy_alias: []
+
+  - id: S093
+    name: 发送邮件
+    group: 网络信息
+    api:
+      - "android.content.Context#startActivity()"
+    arg_filter: "mailto:"
+    pi: null
+    perm: 无
+    evidence: B
+    confirm: "Intent data 以 mailto: 开头"
+    fp: 中
+    fp_note: 按 scheme 过滤
+    policy_alias: []
+
+  - id: S094
+    name: 读取邮件
+    group: 网络信息
+    api:
+      - "android.content.ContentResolver#query()"
+    arg_filter: "content://com.android.email"
+    pi: P14
+    perm: 读邮件权限
+    evidence: B
+    confirm: Uri 匹配邮件 Provider
+    fp: 中
+    fp_note: 极少见；出现即为高敏行为，直接判敏感个人信息
+    policy_alias: [邮箱, 邮件信息]
+
+  - id: S095
+    name: 使用蓝牙
+    group: 网络信息
+    api:
+      - "android.bluetooth.BluetoothAdapter#startDiscovery()"
+      - "android.bluetooth.BluetoothAdapter#getBondedDevices()"
+    pi: P01
+    perm: BLUETOOTH_SCAN / BLUETOOTH_CONNECT (Android 12+)
+    evidence: A
+    confirm: 返回列表非空
+    fp: 低
+    fp_note: 蓝牙设备列表可反推位置与社交关系，注意与 S017 区分（名称 vs 列表）
+    policy_alias: [蓝牙信息, 附近设备]
+
+  - id: S096
+    name: 开启NFC
+    group: 网络信息
+    api:
+      - "android.nfc.NfcAdapter#enable()"
+      - "android.nfc.NfcAdapter#enableReaderMode()"
+    pi: null
+    perm: NFC
+    evidence: A
+    confirm: 被调用
+    fp: 低
+    fp_note: 行为特征，与合规判定无直接关系
+    policy_alias: []
+
+  - id: S097
+    name: DRM 设备唯一标识
+    group: 硬件标识
+    api:
+      - "android.media.MediaDrm#getPropertyByteArray()"
+    arg_filter: deviceUniqueId
+    pi: P01
+    perm: 无
+    evidence: B
+    confirm: 参数严格等于 "deviceUniqueId" 且返回字节数组非空
+    fp: 低
+    fp_note: >
+      Android 10（API 29）封掉 IMEI / 序列号之后，Widevine 的 deviceUniqueId
+      成了 SDK 换用的持久设备指纹：无需任何权限、每台设备各不相同、恢复出厂
+      也可能不变。参数唯一（还有 version/properties 等），必须按参数过滤，
+      否则每一次 DRM 播放都会被记成"读设备标识"。取到的值是字节数组，
+      不能直接当字符串比值，有效性只看长度。
+    policy_alias: [设备标识符, DRM ID, Widevine, 设备唯一标识]
+
+# ============================================================================
+# 信号到测评项的喂给关系（用于自动判定）
+# ============================================================================
+feeds:
+  Q001:  # 未公开收集使用规则
+    rule: 首启无隐私政策弹窗，但已出现 evidence>=A 的信号
+    signals: [S001-S097 全部]
+  Q002:  # 征得同意前收集
+    rule: 信号时间戳早于「同意事件」
+    signals: [除 S062/S067/S068/S071/S072/S076/S088/S092/S096 等纯行为项外的全部]
+  Q003:  # 未经用户同意收集（未在政策声明）
+    rule: 信号的 pi 类型不在政策声明的收集项集合中
+    signals: [全部含 pi 字段的信号]
+  Q010:  # 超出必要范围 / 无关场景
+    rule: 信号发生时所在界面与 pi 类型无业务关联
+    signals: [P04 位置, P05 通讯录, P06 通信记录, P07 应用信息]
+  Q011:  # 超出最低必要频率
+    rule: 单位时间内同一信号被触发次数超阈值
+    signals: [全部]
+  Q012:  # 提前索要非当前功能权限
+    rule: S069 记录的权限名与当时界面功能不匹配
+    signals: [S069]
+  Q023:  # 关闭个性化推荐后未停止收集
+    rule: 关闭动作之后仍出现广告/画像相关 SDK 的信号
+    signals: [S007-S010, S052, S055]
+  Q025:  # 未加密/去标识化
+    rule: 反向 —— S062 命中说明已加密，可用于排除该违规
+    signals: [S062]
+
+# ============================================================================
+# 已识别的重复计数风险（须在采集层归并，否则直接推高误报）
+# ============================================================================
+dedup_rules:
+  - members: [S006, S074]
+    note: Settings.Secure.getString 同时出现在"Android ID"与"读系统设置"，按 key 归并
+  - members: [S055, S074]
+    note: SystemProperties 与 Settings 合并为"系统属性读取"，按 key 白名单统一
+  - members: [S011, S089]
+    note: getConnectionInfo 与其后续字段读取归并为一次
+  - members: [S080, S081, S082]
+    note: 同一 HTTP 请求会同时触发三者，按 URI 归并为一次网络上报
+  - members: [S022, S028]
+    note: 网络类型读取归并为一次
+  - members: [S012, S013, S087]
+    note: WiFi 相关归并为"WiFi 信息收集"，但 BSSID/SSID 与扫描列表分开计数

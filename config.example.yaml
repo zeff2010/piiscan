@@ -1,0 +1,167 @@
+# ============================================================
+#  App 个人信息保护合规检测平台 v1.0.0 —— 配置示例
+#
+#  用法：
+#     cp config.example.yaml config.yaml
+#  然后按自己的环境改下面几处：
+#     device.serial / device.phones   —— 你的测试机（可留空，用界面上的「手机管理」登记）
+#     scan.package                    —— 命令行模式要测的包名（平台模式由任务指定）
+#     ai.*                            —— 模型服务（也可以整个不动，改用界面上的「AI 模型服务」）
+#
+#  ★ 本文件不含任何真实设备信息与密钥，可以直接提交到版本库。
+#    `config.yaml` 已被 .gitignore 排除 —— 那是你自己的运行配置，不要提交。
+# ============================================================
+
+device:
+  # adb 设备序列号（`adb devices` 第一列）。**留空 = 自动发现**：
+  # 恰好一台在线设备就直接用；多台同时在线则报错要求指定。
+  # 选错机器测出来的报告看不出错，所以这里不猜。
+  serial: ""
+
+  # 命令行/界面默认优先选这台（可留空）。留空时用第一台在线设备。
+  preferred: ""
+
+  # 每台测试机用哪张 SIM 的手机号（serial → 号码）。
+  # 为什么需要：每台机插的是自己的卡，用 A 机的号去登录 B 机上的 App，
+  # 验证码根本到不了，而现象只是"登录超时"—— 看不出是号码错了，
+  # 很容易被当成 App 的问题写进报告。
+  #
+  # 平台模式下更推荐用界面上的「手机管理」登记（会写进数据库并记验证时间），
+  # 这里只是历史部署方式的兜底。示例：
+  #   phones:
+  #     "a1b2c3d4": "13800000000"
+  phones: {}
+
+  port: 27042               # frida-server 通信端口（保持默认即可）
+
+  # frida-server 二进制路径。留空 = 让程序自己找：
+  #   环境变量 FRIDA_SERVER → tools/frida-server* → 项目根 → 用户主目录
+  # 都找不到时，接入手机那一步会尝试自动下载到 tools/frida/（需能上网）。
+  # 版本必须与本机 pip 安装的 frida 库一致，不一致时自检会直接失败并说明。
+  frida_server: ""
+
+scan:
+  # 命令行模式（run_scan.py）要检测的包名；平台模式下由任务里填的 APK 决定。
+  package: "com.example.app"
+
+  # ---- 检测深度 ----
+  # 平台表单里有四档（pre / light / deep / extreme），这里改的是**基准档 normal**。
+  # 为什么用档位而不是逐个手填：这些参数互相耦合 —— 只加时长不加上限，
+  # 事件会先被 global_event_cap 截断（跑得久但采得一样多）；只加上限不加时长，
+  # 遍历根本走不到深层界面。
+  depth: normal
+  max_shots: 14                    # 单轮最多保留多少张截图（证据图集与报告体积的平衡）
+
+  duration: 90                     # 采集时长（秒），含首启观测阶段
+  spawn: true                      # true=冷启动并注入；false=attach 到已运行进程
+  max_events_per_hook: 12          # 每个 hook 点最多上报几次（防高频方法刷屏）
+  global_event_cap: 2500           # 全局事件上限，防止异常 App 把内存打爆
+  capture_screenshot: true         # 抓设备截图并嵌入报告
+  ui_walk: true                    # 自动遍历界面触发行为（替代人工点击）
+  ui_tap_interval: 1.2             # 每次点击后的等待间隔（秒）
+
+  # ---- 遍历调度 ----
+  # graph：DFS 栈 + tab 铺开 + 价值表 + 死点，按时间分四段
+  #        （entry 20% / survey 40% / deepen 28% / targeted 12%）。
+  # legacy：旧的逐屏贪心，出问题时可一键回退。
+  crawl_observe: true
+  crawl_mode: graph
+  max_taps_per_state: 30           # 单屏最多点几次，防止巨型列表页吃掉整轮预算
+  list_pull_max: 2                 # 滚到底后再上拉几次（等"加载下一页"）
+  shot_every_taps: 4               # 每点击多少次留一张截图（分步证据链）
+  policy_wait: 22                  # 首启观测阶段时长：等隐私政策弹窗出现（秒）
+  reset_app: true                  # 检测前清除应用数据 —— 必须，否则 App 不走首启流程
+  reinstall: true                  # 检测前安装待测 APK
+
+  # ---- 登录辅助 ----
+  # 填了手机号后，遍历遇到登录/注册页会代填并点「获取验证码」，
+  # 然后等你在平台上回填验证码（超时 login_timeout 秒即如实记"登录未完成"）。
+  # 留空 = 不登录，只覆盖游客可见界面（报告会写明这一点）。
+  login_phone: ""
+  login_timeout: 180
+
+  # ---- 复现轮（P7）----
+  # 判定出问题项后，清除应用数据回到初始安装状态，按首轮的点击路径重放，
+  # 看判据是否再现：再现 → 保留"确证"；未再现 → 降为"疑似，需人工复核"；
+  # 没走完/没采到数据 → 状态不变，报告写"未能判定"（不假装验过）。
+  repro_duration: 120
+  repro_policy_wait: 20
+  replay_interval: 0.8
+
+# ------------------------------------------------------------
+#  AI 配置
+#
+#  ★ 平台模式下**不读这里的连接参数**：模型地址/密钥是平台级配置，
+#    在「系统状态 → AI 模型服务」里添加、启用、删除（可以存多套来回切）。
+#    这里只有命令行裸跑（run_scan.py / run_flow.py）和"还没配置任何档案"时才用得上。
+# ★ 首次启动时，若这里的 provider 不是 none，平台会把它迁成一条配置档案。
+#    想保持"干净初始状态"，就让它保持 none。
+# ------------------------------------------------------------
+ai:
+  # provider 可选：
+  #   none   —— 不调用任何模型，报告用内置模板生成（默认，无任何依赖即可跑通）
+  #   ollama —— Ollama 原生接口（POST /api/chat）
+  #   deepseek —— DeepSeek 云端 API（POST /v1/chat/completions）
+  #   openai —— 任意 OpenAI 兼容接口（vLLM / LM Studio / 中转）
+  #   agent  —— 开发用中继：不连任何模型服务，把请求（含截图）落盘等人回答
+  #
+  # ⚠ 「看截图」的两项能力（policy_vision / ui_agent）需要**多模态模型**。
+  #   纯文本模型不会报错，而是静默回退到规则策略 —— 所以能力要如实标。
+  #   常见可用组合：
+  #     Ollama 本地 ：provider=ollama   + vision_model=qwen2.5vl:7b
+  #     DeepSeek    ：provider=deepseek + vision_model=deepseek-flash
+  #     OpenAI 兼容 ：provider=openai   + base_url=https://api.xxx/v1
+  provider: none
+
+  # 服务地址。Ollama 本地默认 http://127.0.0.1:11434
+  base_url: ""
+
+  # 文本任务用的模型（政策深读、报告措辞）
+  model: ""
+
+  # 视觉任务用的模型。留空 = 沿用上面的 model（此时若 model 不支持图片，视觉环节会回退）
+  vision_model: ""
+
+  # 送模型前把截图压缩到这个宽度（像素）。1080×2400 的原图 base64 后好几 MB，
+  # 会撞上下文上限；压到 720 宽后约 60~120 KB，认字认按钮都够用。
+  vision_max_width: 720
+  vision_quality: 72
+
+  # 云端接口所需的密钥；本地 Ollama 一般留空。
+  # ★ 不要把密钥写进要提交的文件 —— 用「系统状态 → AI 模型服务」填，那里只存本地库。
+  api_key: ""
+
+  # ★ 上下文预算：与服务端 Modelfile 的 num_ctx 对齐。
+  #   超限不会报错，模型只看到一部分，报告却写"已分析全文" —— 最危险的一类假阴性，
+  #   所以所有 AI 调用点都按它裁剪/分段（见 ai/chunker.py 与 ai/base.py）。
+  context_tokens: 8192     # 单次可用输入预算（= num_ctx）
+  max_output_tokens: 1536  # 预留给回答；给太小会把 JSON 截在半截，表现为"返回无法解析"
+
+  think: false             # 跳过思考链（部分模型开思考会慢数倍，且吃光输出预算）
+  chunk_workers: 4         # 分段抽取的并发度
+
+  timeout: 90              # 单次文本请求超时（秒）
+  vision_timeout: 180      # 单次视觉请求超时（秒）—— 视觉推理明显更慢，单独给
+  temperature: 0.2
+
+  # ---- 遍历环节的节流 ----
+  # 「每一步都问一次模型」代价很高：本地 CPU 推理每步几十秒、云端按量计费。
+  ui_agent_every: 5        # 每 N 步问一次模型（中间步骤走规则遍历）
+  ui_agent_max_calls: 8    # 单次检测的 AI 决策总次数上限，0 = 不限
+
+  # ---- Agent 中继（provider: agent 时生效）----
+  relay_dir: ""            # 请求落盘目录，留空 = <项目>/out/ai_relay
+  relay_timeout: 900       # 等一次回答的上限（秒）；超时即回退确定性策略
+
+  # 逐个环节的 AI 开关。关掉也能跑出完整报告（走关键词 + 结构树的确定性策略）。
+  features:
+    report_narrative: true   # 把采集事件写成「问题描述」自然语言
+    policy_parse: false      # 政策结构化解析（规则正则 + AI 补充）
+    policy_vision: true      # 【需多模态】看截图定位隐私政策入口、判断页面类型
+    policy_analyze: true     # 政策全文深读：抽取声明信息类型、注销路径、投诉渠道
+    ui_agent: true           # 【需多模态】用截图指挥 UI 遍历
+    risk_classify: false     # 风险等级辅助判定
+
+report:
+  title: "App 个人信息保护合规检测报告"
+  out: "report.html"         # 输出路径，相对项目根目录

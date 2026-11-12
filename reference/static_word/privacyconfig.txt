@@ -1,0 +1,26 @@
+# 行为码 -> 隐私政策中可能出现的表述词（用于「声明 vs 实际」差集判定）
+# 格式：行为码:词1、词2、…；词表按检测实践整理，可自行增补同义词。
+android.permission.GET_MAC:MAC、RouterMacAddres、MacAddres、介质访问控制地址、物理地址、硬件地址、局域网地址
+android.permission.READ_PHONE_STATE_IMEI:IMEI、MEID、手机序列号、串号、国际移动装备辨识码
+android.permission.READ_PHONE_STATE_IMSI:IMSI、用户识别
+android.permission.READ_ANDROID_ID:Android ID、Android-ID、Android_ID、AndroidID、安卓id、设备ID
+android.permission.MY_READ_INSTALLED_PACKAGES:应用列表、软件信息、软件列表、安装列表、应用包名、安装包名、已安装应用包名、进程信息、安装的应用
+android.permission.CLIPBOARD2:剪切板、剪贴板、粘贴板
+android.permission.SENSOR:传感器、加速度、磁场、方向、陀螺仪、线性加速度、重力、旋转矢量、传感器列表、计步器
+android.permission.ACCESS_FINE_LOCATION:定位、行动轨迹、GPS、位置、基站、GNSS、BSSID、SSID、行踪轨迹、蓝牙、经纬度、WLAN、Bluetooth
+android.permission.ACCESS_COARSE_LOCATION:定位、行动轨迹、GPS、位置、基站、GNSS、BSSID、SSID、行踪轨迹、蓝牙、经纬度、WLAN、Bluetooth
+android.permission.READ_PHONE_STATE_PHONECODE:本机号码、电话号码、SIM Serial Number、MSISDN、手机号
+android.permission.READ_CALENDAR:日历、日程信息
+android.permission.CONTENTRESOLVER:多媒体文件、设备多媒体、音频、视频、图片、媒体
+android.permission.GET_BSSID:BSSID、无线路由器标识
+android.permission.GET_SSID:SSID、无线路由器标识
+android.permission.READ_PHONE_STATE_MEID:MEID
+android.permission.READ_PHONE_STATE_ICCID:ICCID、集成电路卡识别码、SIM卡序列号、IC卡唯一识别码
+android.permission.READ_PHONE_STATE_SERIALNO:硬件序列号、设备序列号、SN、DEVICEID、设备号、DEVICE ID、设备ID、Serial Number序列号
+android.permission.READ_PHONE_OAID:OAID、匿名设备标识符
+android.permission.READ_SMS:短信
+android.permission.READ_CALL_LOG:通话
+android.permission.READ_CONTACTS:通讯录、联系人
+android.permission.RECORD_AUDIO:录音、麦克风
+android.permission.CAMERA:拍照、相机、摄像
+android.permission.SEND_SMS:短信
