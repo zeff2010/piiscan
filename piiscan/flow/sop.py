@@ -2111,6 +2111,28 @@ class FlowRunner:
                 "chars": sum(len(" ".join(str(x) for x in (s.get("texts") or [])))
                              for s in readable)}
 
+    def _coverage_caveat(self) -> str:
+        """本轮采集是否自己承认过"没走完、不代表应用没有"？有则返回那句话。
+
+        ★ 为什么单拎出来（2026-11-13，对着 40 份人工检测报告复核发现）：
+          84 轮里只有两轮判了「未公开收集使用规则（发现问题）」—— 船务通与
+          健康深圳。两轮的 `scan_errors` 里都明明白白写着
+          "未覆盖部分按「跳过未测」计，不代表应用没有该功能"，
+          而人工报告里船务通**是有隐私政策的**（还引用了其中"更正 30 天"的承诺）。
+
+          也就是说，问题不在采集：采集已经诚实地说"我没走完"。问题在判据层
+          把"没走完"读成了"不存在" —— 结论比证据强了一档。
+
+          这不是那两单的特例，而是一条普适边界：**否定性结论（"应用没有"）
+          必须有充分的探索支撑**。所以本轮只要存在这种自述，就不许判"未公开"，
+          降级为"疑似"并把观测到什么、缺什么写清楚。
+        """
+        for e in (getattr(self.fr, "scan_errors", None) or []):
+            s = str(e or "")
+            if "不代表应用没有" in s:
+                return s
+        return ""
+
     def p2_policy(self) -> PhaseResult:
         pr = self._begin("P2")
         # 政策正文挂在 ScanResult.policy_capture 里（bestText / urls / pageLinks / outcome）。
@@ -2421,6 +2443,43 @@ class FlowRunner:
             #   （没到前台/界面读不出来/遍历没跑）都退回"跳过未测"并写清原因。
             _nonotice = self._first_launch_no_notice(cap)
             if _nonotice:
+                # ★ 结论强度不能超过证据强度（2026-11-13 复核 40 份人工报告后补）：
+                #   船务通、健康深圳两轮都判了"未公开"，但这两轮的 scan_errors 里
+                #   明明写着"未探索部分……不代表应用没有该功能"。人工报告复核：
+                #   船务通是有隐私政策的（报告里还引用了其中 30 天的更正时限）。
+                #   采集侧已经诚实地说"没走完"，判据层不能把"没走完"读成"不存在"。
+                _caveat = self._coverage_caveat()
+                if _caveat:
+                    self._end(pr, M.PHASE_DONE,
+                              "首启未见政策提示，但本轮覆盖不全，按疑似处理")
+                    _cov = getattr(self.fr, "coverage", None) or {}
+                    self._set(
+                        "Q001", SUSPECT, phase="P2",
+                        confidence="首启观测成立，遍历覆盖不足",
+                        desc=("冷启动后连续观测 %.0f 秒、%d 个界面，未出现任何弹窗或"
+                              "首屏提示要求用户阅读隐私政策，直接进入主界面。但本轮"
+                              "遍历没有走完（已进入 %d 个界面、点击 %d 次，尚有 %d 个"
+                              "入口未探索），因此不足以认定应用「未公开收集使用规则」"
+                              "—— 政策入口可能就在未探索到的路径里。按疑似处理，"
+                              "需人工复核应用内是否存在政策入口。"
+                              % (_nonotice["secs"], _nonotice["screens"],
+                                 int(_cov.get("app_states") or 0),
+                                 int(_cov.get("taps") or 0),
+                                 int(_cov.get("unexplored") or 0))),
+                        evidence=[Evidence("ui", "首启观测界面序列",
+                                           _nonotice["seq"], "P1"),
+                                  Evidence("note", "覆盖不足的原始记录",
+                                           _caveat[:300], "P4")],
+                        facts=[["首启观测时长", "%.0f 秒" % _nonotice["secs"]],
+                               ["观测到的界面数", "%d 屏" % _nonotice["screens"]],
+                               ["是否出现隐私政策字样", "未出现（含「隐私」「协议」相关字样）"],
+                               ["遍历覆盖", "已进入 %d 个界面、点击 %d 次，未探索入口 %d 个"
+                                % (int(_cov.get("app_states") or 0),
+                                   int(_cov.get("taps") or 0),
+                                   int(_cov.get("unexplored") or 0))],
+                               ["为何不定为发现问题", "覆盖不全：%s" % _caveat[:160]],
+                               ["结论依据", "否定性结论需要充分探索；本轮未走完，不能据此认定"]])
+                    return pr
                 self._end(pr, M.PHASE_DONE,
                           "首启未见任何隐私政策提示（已观测 %.0fs，%d 屏）"
                           % (_nonotice["secs"], _nonotice["screens"]))
@@ -2438,6 +2497,10 @@ class FlowRunner:
                            ["观测到的界面数", "%d 屏" % _nonotice["screens"]],
                            ["是否出现隐私政策字样", "未出现（含「隐私」「协议」相关字样）"],
                            ["是否出现同意动作", "未出现（应用未要求同意即进入主界面）"],
+                           ["遍历覆盖", "已进入 %d 个界面、点击 %d 次，未探索入口 %d 个"
+                            % (int((getattr(self.fr, "coverage", None) or {}).get("app_states") or 0),
+                               int((getattr(self.fr, "coverage", None) or {}).get("taps") or 0),
+                               int((getattr(self.fr, "coverage", None) or {}).get("unexplored") or 0))],
                            ["遍历阶段是否找到政策入口", "未找到"],
                            ["结论依据", "首启全程无人为遮挡，界面结构树可正常读取"]])
                 for qid in ("Q005", "Q006", "Q007", "Q008", "Q009",

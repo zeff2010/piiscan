@@ -309,3 +309,41 @@ def run(check):
           and "1 档：已取得政策正文，按要求不点同意" not in _src1, "")
     check("★ 1 档也要走「同意前补做政策访问」（不点同意，故无替用户同意风险）",
           "not consent_done and not policy_resolved" in _src1, "")
+
+    # -------------------- 「没走完」不能读成「应用没有」（2026-11-13）
+    # 起因：对着 40 份人工检测报告复核 84 轮自动化结论，发现 84 轮里只有两轮判了
+    # 「未公开收集使用规则（发现问题）」—— 船务通与健康深圳。而这两轮的
+    # scan_errors 里都写着"未覆盖部分按「跳过未测」计，不代表应用没有该功能"；
+    # 人工报告里**船务通是有隐私政策的**（还引用了其中"更正 30 天"的承诺）。
+    # 采集侧已经诚实地说"我没走完"，判据层却把"没走完"读成了"不存在"。
+    from types import SimpleNamespace as _NS
+    from piiscan.flow.sop import FlowRunner as _SOP
+
+    class _Stub:            # 只需要 `.fr.scan_errors`
+        pass
+
+    _s = _Stub()
+    _s.fr = _NS(scan_errors=[
+        "连续 8 轮停在「x/.MainActivity」没有任何动作发生……因此在此收工。"
+        "未覆盖部分按「跳过未测」计，不代表应用没有该功能"])
+    check("★ 能识别「本轮没走完」的自述（降级依据）",
+          bool(_SOP._coverage_caveat(_s)), _SOP._coverage_caveat(_s)[:40])
+    _s.fr = _NS(scan_errors=["界面布局中有 9 个可点入口被其它控件遮挡"])
+    check("没有这类自述时不许降级（正常收工仍可认定）",
+          _SOP._coverage_caveat(_s) == "", "")
+    _s.fr = _NS(scan_errors=[])
+    check("scan_errors 为空时安全返回", _SOP._coverage_caveat(_s) == "", "")
+
+    _sop_src = (ROOT / "piiscan" / "flow" / "sop.py").read_text(encoding="utf-8")
+    check("首启无提示这条路会先问覆盖度",
+          "_nonotice" in _sop_src and "_coverage_caveat()" in _sop_src, "")
+    check("★ 覆盖不足时降为「疑似」而不是「发现问题」",
+          "首启未见政策提示，但本轮覆盖不全，按疑似处理" in _sop_src, "")
+
+    # 描述拼接：正文自带句号时不能再叠一个
+    from piiscan.flow.checklist import _desc_for as _DF
+    from piiscan.flow.models import ItemState as _IS, SUSPECT as _SUSPECT
+    _row = {"standard": "某标准", "clause": "", "unit": "",
+            "conclusion": "未公开收集使用规则"}
+    _txt = _DF(_row, _IS(state=_SUSPECT, desc="正文自己带句号。"))
+    check("★ 疑似/问题的描述不会拼出连续句号", "。。" not in _txt, _txt[:50])

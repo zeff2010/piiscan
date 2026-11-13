@@ -87,12 +87,15 @@ def _basis_sentence(row: Dict[str, Any], state: str = "") -> str:
 
 
 def _desc_for(row: Dict[str, Any], st: ItemState) -> str:
+    # ★ 三处都要先 rstrip("。")：正文自己收尾带句号时，下面那个 "%s。%s" 会拼出
+    #   "入口。。依据《…》"（2026-11-13 把「未公开」降级为疑似时撞到）。
+    #   PASS 分支早就 rstrip 了，FAIL / SUSPECT 漏了 —— 同一件事三种写法。
     if st.state == FAIL:
-        body = st.desc.strip() or "具体问题描述待补充。"
-        return "%s。%s" % (body, _basis_sentence(row, FAIL))
+        body = st.desc.strip() or "具体问题描述待补充"
+        return "%s。%s" % (body.rstrip("。"), _basis_sentence(row, FAIL))
     if st.state == SUSPECT:
-        body = st.desc.strip() or "发现疑似线索，需人工复核。"
-        return "%s。%s" % (body, _basis_sentence(row, SUSPECT))
+        body = st.desc.strip() or "发现疑似线索，需人工复核"
+        return "%s。%s" % (body.rstrip("。"), _basis_sentence(row, SUSPECT))
     if st.state == PASS:
         # ★「未发现问题」也必须说清**凭什么**是这个结论。
         #   早先这里是一句固定套话（"本次检测已取得证据，未发现…的情形"），
