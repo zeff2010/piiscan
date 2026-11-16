@@ -1383,7 +1383,7 @@ class Worker(threading.Thread):
         # 完全不同 —— 失败是"测了，有问题"，跳过是"根本没测"。混在一起，
         # 用户看到"8 个任务 3 个失败"会以为那 3 个 App 有问题。
         if not opts.apk_path and job.get("store_url"):
-            if not self._fetch_from_store(job, wd, opts, log, should_stop):
+            if not self._fetch_from_store(job, opts, log, should_stop):
                 return
 
         # ---- 链接模式的 APK 要在开跑前先下下来 ----
@@ -1393,8 +1393,10 @@ class Worker(threading.Thread):
             self.db.update(job_id, stage="下载 APK", progress=2)
             log("[*] 下载 APK：%s" % job["apk_url"])
             try:
-                from piiscan import apkfetch
-                fr = apkfetch.fetch_url(job["apk_url"], wd / "input", log=log)
+                from piiscan import apkfetch, apkstore
+                # 下到存储目录的 .incoming：与正式目录同盘，收进去只是改名。
+                _incoming = apkstore.incoming_dir(apk_store_root(self.db, self.workdir))
+                fr = apkfetch.fetch_url(job["apk_url"], _incoming, log=log)
             except Exception as e:
                 fr = None
                 log("[!] 下载异常：%s" % e)
@@ -1404,8 +1406,16 @@ class Worker(threading.Thread):
                                error=msg, progress=100, stage="失败", req="")
                 log("[!] %s" % msg)
                 return
-            opts.apk_path = fr.path
-            self.db.update(job_id, apk_path=fr.path,
+            try:
+                _apk, _rt = apk_store_adopt(self.db, self.workdir, fr.path, fr.filename, fr.sha256, log=log)
+            except Exception as e:
+                msg = "APK 归档失败：%s" % e
+                self.db.update(job_id, status="failed", finished_at=time.time(),
+                               error=msg, progress=100, stage="失败", req="")
+                log("[!] %s" % msg)
+                return
+            opts.apk_path = _apk
+            self.db.update(job_id, apk_path=_apk, apk_store=_rt,
                            apk_name=fr.original_name or fr.filename,
                            apk_size=fr.size, md5=fr.md5, sha256=fr.sha256)
             log("[*] 已下载：%s（%.1f MB）" % (fr.filename, fr.size / 1048576.0))
@@ -1570,9 +1580,9 @@ class Worker(threading.Thread):
                        finished_at=time.time(), error=reason, req="")
         self.db.append_log(job_id, "[!] 已跳过（未执行检测）：%s" % reason)
 
-    def _fetch_from_store(self, job: Dict[str, Any], wd: Path, opts: Any,
+    def _fetch_from_store(self, job: Dict[str, Any], opts: Any,
                           log, should_stop) -> bool:
-        """解析应用商店链接并把 APK 下到任务目录。成功返回 True。"""
+        """解析应用商店链接并把 APK 下载到共享存储。成功返回 True。"""
         from piiscan import storefetch
 
         url = job["store_url"]
@@ -1595,7 +1605,9 @@ class Worker(threading.Thread):
                                progress=max(2, min(12, 2 + pct // 10)))
 
         try:
-            fr = storefetch.fetch(url, wd / "input", log=log,
+            from piiscan import apkstore
+            _incoming = apkstore.incoming_dir(apk_store_root(self.db, self.workdir))
+            fr = storefetch.fetch(url, _incoming, log=log,
                                   progress=on_progress, should_stop=should_stop)
         except storefetch.StoreCancelled:
             # 下载途中被要求停止：这是"用户操作"，不是失败。
@@ -1615,17 +1627,62 @@ class Worker(threading.Thread):
 
         # 商店解析出的包名/版本作为兜底：服务器上没有 aapt 时，
         # 静态分析解析不出显示名，报告头会只剩包名。
-        opts.apk_path = fr.path
+        try:
+            _apk, _rt = apk_store_adopt(self.db, self.workdir, fr.path, fr.filename, fr.sha256, log=log)
+        except Exception as e:  # noqa: BLE001
+            self._skip(jid, "APK 归档失败：%s" % e)
+            return False
+        opts.apk_path = _apk
         opts.package = fr.package or opts.package
         opts.app_name = fr.app_name or opts.app_name
         opts.version = fr.version or opts.version
-        self.db.update(jid, apk_path=fr.path, apk_name=fr.filename,
+        self.db.update(jid, apk_path=_apk, apk_store=_rt, apk_name=fr.filename,
                        apk_size=fr.size, sha256=fr.sha256,
                        package=fr.package or "", app_label=fr.app_name or "",
                        version_name=fr.version or "")
         log("[+] 已下载：%s（%.1f MB，来源 %s）"
             % (fr.filename, fr.size / 1048576.0, fr.market or "应用商店"))
         return True
+
+
+# ============================================================================
+#  APK 共享存储（建任务时的上传、worker 里的下载，两条路都走这里）
+# ============================================================================
+#
+# 为什么放到模块级而不是某个类的方法：同一次落盘既要能从 HTTP 处理线程
+# （上传）发起，也要能从 worker 线程（直链/商店下载）发起，两边各自实现一遍
+# 迟早会分叉 —— 一边记 apk_store、一边忘了记，删除时的护栏就失效了。
+
+def apk_store_root(db: Any, workdir: Path) -> Path:
+    """当前生效的 APK 存储根目录（已创建）。
+
+    配置在 `app_meta.apk_store_dir`（系统状态页可改），空则用
+    `<工作目录>/apk`。建任务和跑任务都从这里取，保证"任务里记的路径"
+    与"文件实际所在"永远是同一个位置。
+    """
+    from piiscan import apkstore
+    rt = apkstore.root(db, workdir)
+    try:
+        apkstore.ensure(rt)
+        apkstore.incoming_dir(rt).mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise ValueError("APK 存储目录不可用（%s）：%s" % (rt, e))
+    return rt
+
+
+def apk_store_adopt(db: Any, workdir: Path, src: str, filename: str,
+                    key: str, log=None) -> Tuple[str, str]:
+    """把一个刚落地的临时文件收进存储目录，返回 (绝对路径, 存储根)。
+
+    `key` 是内容哈希（sha256 优先）：同一个包不管下几次、传几次，
+    最终都落到同一个路径上，多任务共用一份文件。
+    """
+    from piiscan import apkstore
+    rt = apk_store_root(db, workdir)
+    r = apkstore.adopt(src, rt, key=key, filename=filename, log=log)
+    if not r.get("ok"):
+        raise ValueError("APK 归档失败：%s" % r.get("error"))
+    return r["path"], str(rt)
 
 
 # ============================================================================
@@ -2129,6 +2186,117 @@ class Handler(BaseHTTPRequestHandler):
         return {k: v[0] for k, v in q.items()}
 
     # ---- 路由 ----
+    # ------------------------------------------------------------ APK 存储
+    #
+    # 为什么把它做成平台级设置而不是任务参数：APK 一次只有一个"当前该放哪"，
+    # 而且它取决于这台机器的磁盘布局（C 盘小、D 盘大）。每个任务各填一次
+    # 只会让人重复劳动，还会出现"同一台机器上任务分散在三个目录"的局面。
+    #
+    # 换目录**不搬**已有文件：几百 MB 的包搬起来又慢又容易半路失败，
+    # 而老任务里记的是绝对路径，留在原处照样能复现、能删。
+    def _storage_get(self):
+        from piiscan import apkstore
+        cur = apkstore.root(self.db, self.workdir)
+        dft = apkstore.default_root(self.workdir)
+        info = apkstore.describe(cur)
+        try:
+            orph = apkstore.orphans(self.db, cur) if info["exists"] else []
+        except Exception:
+            orph = []
+        ob = sum(int(o.get("size") or 0) for o in orph)
+        return self._json({
+            "ok": True,
+            "dir": info["dir"],
+            "default_dir": str(dft),
+            "is_default": not apkstore.configured(self.db),
+            "exists": info["exists"],
+            "files": info["files"],
+            "bytes": info["bytes"],
+            "size_text": apkstore.fmt_size(info["bytes"]),
+            # .incoming 里是还没收进去的半截下载，单独报：混进"已占用"会让人误解。
+            "incoming_files": info["incoming_files"],
+            "incoming_bytes": info["incoming_bytes"],
+            "incoming_size_text": apkstore.fmt_size(info["incoming_bytes"]),
+            "orphans": len(orph),
+            "orphan_bytes": ob,
+            "orphan_size_text": apkstore.fmt_size(ob),
+        })
+
+    def _storage_set(self):
+        from piiscan import apkstore
+        data = self._read_body_json()
+        raw = str(data.get("dir") or "").strip()
+        old = apkstore.root(self.db, self.workdir)
+        created = False
+        if not raw:
+            # 空＝恢复默认位置。这是"取消自定义"，不是"存一个空路径"。
+            self.db.meta_set(apkstore.META_KEY, "")
+            new = apkstore.default_root(self.workdir)
+        else:
+            v = apkstore.validate_dir(raw)
+            if not v.get("ok"):
+                raise ValueError(v.get("error") or "目录不可用")
+            self.db.meta_set(apkstore.META_KEY, v["path"])
+            new = Path(v["path"])
+            created = bool(v.get("created"))
+        note = ""
+        if str(new) != str(old):
+            prev = apkstore.describe(old)
+            if prev.get("files"):
+                note = ("原目录里的 %d 个包（%s）仍然保留在原处，没有搬移；"
+                        "老任务记的是绝对路径，删任务时照各自记录的位置清理。"
+                        % (prev["files"], apkstore.fmt_size(prev["bytes"])))
+            else:
+                note = "之后下载与上传的 APK 都放到新位置。"
+        return self._json({"ok": True, "dir": str(new), "previous": str(old),
+                           "created": created, "note": note,
+                           "default_dir": str(apkstore.default_root(self.workdir))})
+
+    def _storage_sweep(self):
+        """清掉没有任务引用的包，以及一天前还没下完的残片。"""
+        from piiscan import apkstore
+        rt = apkstore.root(self.db, self.workdir)
+        r = apkstore.sweep(self.db, rt)
+        return self._json({
+            "ok": True, "dir": str(rt),
+            "count": r.get("count", 0),
+            "bytes": r.get("bytes", 0),
+            "size_text": apkstore.fmt_size(r.get("bytes", 0)),
+            "errors": r.get("errors") or [],
+        })
+
+    def _storage_pick(self):
+        """在服务所在的这台机器上弹一个目录选择框。
+
+        为什么用子进程：Tk 的对象必须建在它自己的主线程上，HTTP 处理线程里
+        直接建会偶发崩溃。独立进程起来、选完打印路径、退出，最稳。
+        服务通常只监听本机，弹窗就出现在使用者眼前；若没有桌面环境
+        （远程/无头服务器），这里会失败并如实回报，界面上仍可手填路径。
+        """
+        import subprocess
+        import sys as _sys
+        code = (
+            "import tkinter as tk\n"
+            "from tkinter import filedialog\n"
+            "r = tk.Tk(); r.withdraw()\n"
+            "try: r.attributes('-topmost', True)\n"
+            "except Exception: pass\n"
+            "print(filedialog.askdirectory(title='选择 APK 存储目录') or '')\n"
+            "r.destroy()\n"
+        )
+        try:
+            p = subprocess.run([_sys.executable, "-c", code],
+                               capture_output=True, text=True, timeout=600,
+                               encoding="utf-8", errors="replace")
+        except Exception as e:
+            raise ValueError("无法打开目录选择框（环境可能没有桌面）：%s；"
+                             "请直接在输入框里填绝对路径" % e)
+        if p.returncode != 0:
+            raise ValueError("目录选择框打开失败（环境可能没有桌面）：%s；"
+                             "请直接在输入框里填绝对路径"
+                             % ((p.stderr or "").strip()[-200:] or "未知原因"))
+        return self._json({"ok": True, "dir": (p.stdout or "").strip()})
+
     # ------------------------------------------------------------ AI 连通性
     def _ai_ping(self):
         """回答"这套 AI 配置现在到底能不能用"，而不是只回答"端口通不通"。
@@ -2349,6 +2517,8 @@ class Handler(BaseHTTPRequestHandler):
                                "auto": not cur})
         if path == "/api/ai/ping":
             return self._ai_ping()
+        if path == "/api/storage":
+            return self._storage_get()
         if path == "/api/env/preflight":
             return self._preflight()
         if path == "/api/devices/registry":
@@ -2417,6 +2587,26 @@ class Handler(BaseHTTPRequestHandler):
                 return self._ai_active_set()
             except ValueError as e:
                 return self._err(400, str(e))
+            except Exception as e:
+                return self._err(500, "%s: %s" % (type(e).__name__, e))
+        # ---- APK 存储位置（系统状态页）----
+        if path == "/api/storage":
+            try:
+                return self._storage_set()
+            except ValueError as e:
+                return self._err(400, str(e))
+            except Exception as e:
+                return self._err(500, "%s: %s" % (type(e).__name__, e))
+        if path == "/api/storage/sweep":
+            try:
+                return self._storage_sweep()
+            except ValueError as e:
+                return self._err(400, str(e))
+            except Exception as e:
+                return self._err(500, "%s: %s" % (type(e).__name__, e))
+        if path == "/api/storage/pick":
+            try:
+                return self._storage_pick()
             except Exception as e:
                 return self._err(500, "%s: %s" % (type(e).__name__, e))
         m = re.match(r"^/api/ai/profiles/([A-Za-z0-9_\-]+)/(activate|test)$", path)
@@ -2557,7 +2747,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(500, "%s: %s" % (type(e).__name__, e))
         if not r.get("ok"):
             return self._err(409, r.get("error") or "删除失败")
-        return self._json({"ok": True, "removed": r.get("removed") or []})
+        return self._json({"ok": True, "removed": r.get("removed") or [],
+                           # 包还被别的任务用着时文件会留着，这里如实带出去，
+                           # 否则界面说"已删除"，磁盘上却还在，等于撒谎。
+                           "apk_kept_by": r.get("apk_kept_by") or 0,
+                           "apk_note": r.get("apk_note") or ""})
 
     # ---- 具体动作 ----
     def _file(self, path: Path, ctype: str):
@@ -3268,7 +3462,13 @@ class Handler(BaseHTTPRequestHandler):
         if ctype.startswith("multipart/form-data"):
             if length > self.max_upload:
                 raise ValueError("上传体积超过上限 %.0f MB" % (self.max_upload / 1048576.0))
-            save_dir = self.workdir / "_uploads"
+            # 上传的文件先落到存储目录的 .incoming 下：与正式目录同盘，
+            # 收进去时是一次 rename，不再复制第二份几百 MB 的副本。
+            # ★ 存储目录在这里就要校验：不可写必须现在失败，
+            #   而不是等 worker 跑到下载/归档那一步才报错 —— 那时任务已经排上队了。
+            from piiscan import apkstore
+            _store = apk_store_root(self.db, self.workdir)
+            save_dir = apkstore.incoming_dir(_store)
             fields = parse_multipart(self.rfile, ctype, length, save_dir, self.max_upload)
             # 前端 URL 模式同样走 FormData（只带 apk_url 字段，不带文件），
             # 所以这里必须先判有没有文件，不能无条件要求 apk_file。
@@ -3298,10 +3498,19 @@ class Handler(BaseHTTPRequestHandler):
                 ai_opts=collect_ai_opts(fields),
             )
             if apk and apk.get("path"):
+                # 内容哈希决定它落在存储目录的哪个位置：同一个包再传一次
+                # 只会复用已有文件，不会多占一份。哈希与 apk_path 一起入库，
+                # 仍然是"一条 INSERT 落地"，不留 worker 抢先的空窗。
+                from piiscan import apkfetch
+                h = apkfetch.hash_file(apk["path"])
+                _path, _rt = apk_store_adopt(self.db, self.workdir, apk["path"],
+                                             apk["filename"], h["sha256"])
                 # 一次性写入，不给 worker 留「字段还没补全就被取走」的窗口
                 job_id = self.db.create(
                     source="upload", apk_name=apk["filename"],
-                    apk_path=str(apk["path"]), apk_size=int(apk.get("size") or 0),
+                    apk_path=_path, apk_store=_rt,
+                    apk_size=int(apk.get("size") or 0),
+                    md5=h["md5"], sha256=h["sha256"],
                     **common)
             elif store_text:
                 # 批量：一行一个商店链接，按提交顺序逐个排队

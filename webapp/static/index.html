@@ -219,6 +219,18 @@ td.sel input:disabled{cursor:not-allowed;opacity:.35;}
 .devcard .dacts a{color:var(--brand);font-size:11.5px;text-decoration:none;font-weight:600;cursor:pointer;}
 .devcard .dacts a:hover{text-decoration:underline;}
 .devcard .dacts a[disabled]{opacity:.5;cursor:default;text-decoration:none;}
+/* ---- APK 存储（系统状态页）----
+   APK 是这台机器上最占盘的东西，所以这块只回答两个问题：
+   现在放在哪、占了多少。换目录的按钮不承诺"搬文件"—— 搬几百 MB 失败率高，
+   而老任务的路径是绝对路径，留在原处照样能复现。 */
+.storbox{margin-top:13px;}
+.storline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.storline input{flex:1 1 340px;min-width:0;margin:0;
+  font-family:ui-monospace,Consolas,monospace;font-size:12.5px;}
+.storline button{margin:0;width:auto;padding:7px 14px;font-size:12.5px;border-radius:7px;}
+.storstat{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--ink2);}
+.storstat b{color:var(--ink);font-weight:600;}
+.storstat .warn{color:var(--mid);}
 /* ---- 左侧菜单 ---- */
 .brand{display:flex;align-items:center;gap:10px;padding:0 8px 17px;
   border-bottom:1px solid rgba(255,255,255,.08);}
@@ -543,6 +555,29 @@ code{font-family:ui-monospace,Consolas,monospace;font-size:12px;
         <div class="tip sm" id="aitip">
           这里只管<strong>连哪个模型服务</strong>。某个任务具体开哪些 AI 环节、多久问一次，
           仍在「新建任务」里设。停用全部配置后，AI 环节回到关键词 + 结构树的确定性策略，报告照常生成。
+        </div>
+      </div>
+
+      <!-- APK 存储（2026-11-16 用户要求）。
+           APK 一次上百 MB，同一份包又常被反复用（复测、重复链接、重复上传），
+           所以集中存一处、按内容去重：同一个包在盘上只留一份，多个任务共用。
+           删任务时只有最后一个引用它的任务离开才删文件 —— 下面把这件事说清楚，
+           否则用户会以为"删了任务，磁盘却没见小"。 -->
+      <div class="envwrap" id="storwrap">
+        <div class="envtop">
+          <span class="eb">APK 存储</span>
+          <span class="envsum" id="storsum">正在读取…</span>
+          <button id="storpick" type="button" title="在运行平台的这台电脑上选择目录">选择目录…</button>
+        </div>
+        <div class="storbox">
+          <div class="storline">
+            <input type="text" id="stordir" placeholder="留空 = 默认位置（工作目录下的 apk/）"
+                   spellcheck="false" autocomplete="off"/>
+            <button id="storsave" type="button">保存</button>
+            <button id="storreset" type="button" class="ghost">用默认位置</button>
+          </div>
+          <div class="storstat" id="storstat"></div>
+          <div class="tip sm" id="stortip"></div>
         </div>
       </div>
     </section>
@@ -890,6 +925,7 @@ function go(name, keepHash){
   if (name === "status" && typeof loadDevices === "function") {
     try { loadDevices(false); } catch (e) {}
     try { loadAiProfiles(); } catch (e) {}
+    try { loadStorage(); } catch (e) {}
   }
   // 手机管理页每次进来都**强制**刷一次登记簿：刚移除一台、刚添加完，
   // 切回来就该看到最新状态，而不是等 10 秒轮询。
@@ -2168,7 +2204,8 @@ async function batchDelete(){
     ? "\n注意：其中 " + outside + " 项已不在当前筛选范围内（状态刚变过）。" : "";
   if (!confirm("批量删除 " + ids.length + " 个任务？" + scopeLine + "\n\n" + head + more
       + outLine
-      + "\n\n报告、流程存档、采集存档与 APK 副本都会一并删除，无法恢复。")) return;
+      + "\n\n报告、流程存档、采集存档都会一并删除；"
+      + "APK 若没有别的任务在共用，也会从磁盘删掉。以上操作无法恢复。")) return;
   if (!confirm("再次确认：删除后不可恢复。继续吗？")) return;
 
   const btn = $("#bulkdel"), old = btn.textContent;
@@ -2181,6 +2218,7 @@ async function batchDelete(){
     if (r.ok) {
       let msg = "已删除 " + done + " 项";
       if (r.files) msg += "（清理文件/目录 " + r.files + " 处）";
+      if (r.apk_kept) msg += "；" + r.apk_kept + " 个 APK 仍被其它任务共用，已保留";
       if (sk.length) msg += "；跳过 " + sk.length + " 项：" + sk.slice(0, 2).map(s => s.id + " " + s.reason).join("；");
       toast(msg);
     } else {
@@ -2199,7 +2237,8 @@ async function batchDelete(){
 
 async function doAction(id, action){
   if (action === "delete"){
-    if (!confirm("删除这个任务？\n\n报告、流程存档、采集存档与 APK 副本都会一并删除，无法恢复。")) return;
+    if (!confirm("删除这个任务？\n\n报告、流程存档、采集存档都会一并删除；"
+        + "APK 若没有别的任务在共用，也会从磁盘删掉。无法恢复。")) return;
     if (!confirm("再次确认：删除后不可恢复。继续吗？")) return;
   }
   if (action === "cancel" && !confirm("停止这个任务？\n\n运行中的采集会中断，并自动卸载被测应用。\n正在进行的模型调用会立即打断，不再等它返回。")) return;
@@ -2216,6 +2255,13 @@ async function doAction(id, action){
         ? "已打断正在进行的模型调用，正在收尾…（状态列会显示「停止中」）"
         : (r.note || "已发出停止请求，正在收尾…"));
       FAST_POLL = Date.now() + 15000;   // 15 秒内 0.8 秒刷一次
+    } else if (action === "delete") {
+      // 共享存储下"删了任务"不等于"包一定从盘上消失"：别的任务还在用就留着。
+      // 这两件事必须分开说，否则用户会去磁盘上找"为什么没删干净"。
+      const kept = r.apk_kept_by || 0;
+      toast(kept
+        ? ("已删除任务；APK 仍被 " + kept + " 个任务共用，文件已保留")
+        : ((r.removed || []).length ? "已删除任务，相关文件已清理" : "已删除任务"));
     } else {
       toast(r.note || ("已" + (ACT_LABEL[action]||action)));
     }
@@ -2349,7 +2395,12 @@ function render(jobs, stats){
       + '<td class="sel">'+ck+'</td>'
       + '<td><div class="app">'+esc(name)+'</div>'
         + '<div class="pkg">'+esc(pkg||"—")
-        + (j.device ? ' · 设备 '+esc(j.device) : '')+'</div></td>'
+        + (j.device ? ' · 设备 '+esc(j.device) : '')
+        // APK 现在可能被多条任务共用，列表里只放文件名，完整路径放 title：
+        // 要回答"磁盘上到底是哪个文件"时得能查到，但不该把一列撑成两行。
+        + (j.apk_name ? '<span title="APK 文件：'+esc(j.apk_path||j.apk_name)+'">'
+             +' · '+esc(String(j.apk_name).slice(0,22))+'</span>' : '')
+        + '</div></td>'
       + '<td>'+stBadge+timeLines(j)+qp+stopInfo+'</td>'
       + '<td>'+res+'</td>'
       + '<td><div class="acts">'+acts.join("")+'</div></td>'
@@ -2848,6 +2899,113 @@ if ($("#aiwrap")) {
       else if ($("#f_vision_model").value === "deepseek-flash") { $("#f_vision_model").value = ""; }
     }
     syncAiForm();
+  });
+}
+
+// ---------- APK 存储（系统状态页 · 平台级配置） ----------
+// 为什么要给一个"存储位置"：一个带 native 库的 APK 动辄上百 MB，而系统盘
+// 常常只剩几十 G。平台把包集中放一处、按内容去重（同一个包多任务共用一份），
+// 删任务时只有**最后一个**引用它的任务离开才删文件。
+// 换目录不搬已有文件：搬几百 MB 失败率高，而老任务记的是绝对路径，留在原处照样能复现。
+let STOR = null;
+
+async function loadStorage() {
+  const sum = $("#storsum");
+  try {
+    const r = await fetch("/api/storage").then(x => x.json());
+    if (!r.ok) throw new Error(r.error || "读取失败");
+    STOR = r;
+    const inp = $("#stordir");
+    // 正在输入时不要覆盖用户手上的内容（轮询/切页都会走到这里）
+    if (inp && document.activeElement !== inp) inp.value = r.is_default ? "" : r.dir;
+    if (sum) {
+      sum.textContent = r.exists
+        ? (r.files ? ("已存 " + r.files + " 个包 · " + r.size_text)
+                   : "还没有存 APK")
+        : "目录还不存在（首次使用时会自动创建）";
+    }
+    renderStorage();
+  } catch (e) {
+    if (sum) sum.textContent = "读取失败：" + e;
+  }
+}
+
+function renderStorage() {
+  const box = $("#storstat"), tip = $("#stortip");
+  if (!box) return;
+  const r = STOR;
+  if (!r) { box.innerHTML = ""; return; }
+  const bits = [];
+  bits.push('<span>位置：<b>' + (r.is_default ? "默认" : "自定义") + '</b> '
+    + '<code>' + esc(r.dir) + '</code></span>');
+  bits.push('<span>已存：<b>' + r.files + '</b> 个包 · <b>' + esc(r.size_text) + '</b></span>');
+  if (r.incoming_files) {
+    bits.push('<span class="warn">未完成：' + r.incoming_files + ' 个 · '
+      + esc(r.incoming_size_text) + '</span>');
+  }
+  if (r.orphans) {
+    bits.push('<span class="warn">无任务引用：' + r.orphans + ' 个 · '
+      + esc(r.orphan_size_text) + '</span>'
+      + '<button type="button" data-stor="sweep" class="ghost" '
+      + 'style="margin:0;width:auto;padding:3px 10px;font-size:11.5px;border-radius:6px">清理</button>');
+  }
+  box.innerHTML = bits.join("");
+  if (tip) {
+    tip.innerHTML = '同一个包只存一份：重复上传、重复下载、同一 App 复测都共用这个文件，'
+      + '多个任务在报告里指向同一个路径。删除任务时，只有当<b>没有别的任务</b>还在用这个包，'
+      + '才会真正从磁盘删掉；否则保留并在删除结果里说明还剩几个任务在用。'
+      + (r.is_default ? ('<br/>当前用默认位置，想换到别的盘可以点右上「选择目录…」。')
+                      : ('<br/>默认位置是 <code>' + esc(r.default_dir) + '</code>，'
+                         + '点「用默认位置」可以切回去。'));
+  }
+}
+
+async function storSave(dir) {
+  try {
+    const r = await fetch("/api/storage", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({dir: dir})
+    }).then(x => x.json());
+    if (!r.ok) { toast("保存失败：" + (r.error || "未知原因")); return; }
+    if (r.note) toast(r.note);
+    else toast("已保存：" + r.dir);
+    await loadStorage();
+  } catch (e) { toast("请求失败：" + e); }
+}
+
+async function storPick() {
+  toast("正在打开目录选择框…（在运行平台的这台电脑上）");
+  try {
+    const r = await fetch("/api/storage/pick", {method: "POST"}).then(x => x.json());
+    if (!r.ok) { toast(r.error || "打不开选择框，请直接填写绝对路径"); return; }
+    if (!r.dir) { toast("没有选中目录"); return; }
+    $("#stordir").value = r.dir;
+    toast("已选中，点「保存」生效");
+  } catch (e) { toast("请求失败：" + e); }
+}
+
+async function storSweep() {
+  try {
+    const r = await fetch("/api/storage/sweep", {method: "POST"}).then(x => x.json());
+    if (!r.ok) { toast("清理失败：" + (r.error || "未知原因")); return; }
+    toast(r.count ? ("已清理 " + r.count + " 个文件，释放 " + r.size_text)
+                  : "没有需要清理的文件");
+    await loadStorage();
+  } catch (e) { toast("请求失败：" + e); }
+}
+
+if ($("#storwrap")) {
+  $("#storwrap").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.stor === "sweep") return storSweep();
+    if (b.id === "storsave") return storSave($("#stordir").value.trim());
+    if (b.id === "storreset") return storSave("");
+    if (b.id === "storpick") return storPick();
+  });
+  const inp = $("#stordir");
+  if (inp) inp.addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); storSave(inp.value.trim()); }
   });
 }
 

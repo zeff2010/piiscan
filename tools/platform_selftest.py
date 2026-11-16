@@ -473,6 +473,17 @@ def t_db_batch_delete():
     BT.run(check)
 
 
+def t_apk_store():
+    """APK 共享存储：按内容去重、删任务按引用清理（离线）。
+
+    这条链上最容易错的是"删"：删早了把别人还要用的包带走，删晚了磁盘
+    永远不减少。用例同时钉住两种情况，以及"根目录之外的任何文件都不许碰"。
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import _apk_store_tests as AS
+    AS.run(check)
+
+
 # ============================================================================
 #  ⑥ 调用栈归因（App 自身 / 第三方 SDK / 系统框架）
 # ============================================================================
@@ -925,6 +936,7 @@ def main() -> int:
     t_sop_job()
     t_ui_dump_resilience()
     t_db_batch_delete()
+    t_apk_store()
     t_stack_attribution()
     t_no_device_mode()
     t_queue_order()

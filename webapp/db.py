@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS jobs (
     source        TEXT DEFAULT 'upload',
     apk_name      TEXT DEFAULT '',
     apk_path      TEXT DEFAULT '',
+    -- 这个 APK 当时所在的**托管根目录**（平台自己写进去的共享存储）。
+    -- 空串＝老任务或使用者自己的文件，删除任务时不碰它。
+    -- 为什么要单独存根目录而不是"是否托管"的布尔：删除时要用它做第一道护栏
+    -- （路径必须在这个根之下），布尔值给不出这个判断，而根目录会随使用者改配置而变。
+    apk_store     TEXT DEFAULT '',
     apk_url       TEXT DEFAULT '',
     -- 应用商店详情页链接（应用宝/华为/vivo/小米/百度/豌豆荚/360）。
     -- 与 apk_url 分开存：apk_url 是"能直接下到 APK 的直链"，
@@ -195,6 +200,9 @@ _MIGRATIONS = {
     # 排队序（不是 created_at）。置顶＝把这个值改到比队头更小，
     # 这样"其它任务的相对顺序保持不变"是天然的：只动一行。
     "queue_seq": "ALTER TABLE jobs ADD COLUMN queue_seq REAL",
+    # 共享 APK 存储（2026-11-16）：记下这个包当时所在的托管根目录，
+    # 删除任务时用它判断"这个文件归不归平台管"。
+    "apk_store": "ALTER TABLE jobs ADD COLUMN apk_store TEXT DEFAULT ''",
 }
 
 # 状态中文名。前端也有一份，这里是给日志和 API 用的权威版本。
@@ -277,7 +285,8 @@ class JobDB:
     # ------------------------------------------------------------ 写
     def create(self, *, source: str, apk_name: str = "", apk_url: str = "",
                store_url: str = "",
-               apk_path: str = "", apk_size: int = 0,
+               apk_path: str = "", apk_size: int = 0, apk_store: str = "",
+               md5: str = "", sha256: str = "",
                policy_url: str = "", policy_text: str = "",
                run_dynamic: bool = True, duration: int = 90,
                reset_app: bool = True, policy_wait: int = 22,
@@ -298,12 +307,13 @@ class JobDB:
         with self._lock, self._c() as c:
             c.execute(
                 "INSERT INTO jobs(id,created_at,status,source,apk_name,apk_url,"
-                "store_url,apk_path,apk_size,"
+                "store_url,apk_path,apk_store,apk_size,md5,sha256,"
                 "policy_url,policy_text,run_dynamic,duration,reset_app,policy_wait,"
                 "login_phone,repro,depth,device,ai_opts,workdir,queue_seq) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (job_id, now, "queued", source, apk_name, apk_url,
-                 store_url or "", apk_path or "", int(apk_size or 0),
+                 store_url or "", apk_path or "", apk_store or "", int(apk_size or 0),
+                 md5 or "", sha256 or "",
                  policy_url, policy_text, 1 if run_dynamic else 0, int(duration),
                  1 if reset_app else 0, int(policy_wait), login_phone or "",
                  1 if repro else 0, (depth or "normal"), (device or "").strip(),
@@ -580,11 +590,38 @@ class JobDB:
                 "finished_at=? WHERE status='running'", (time.time(),))
             return cur.rowcount
 
+    def apk_refs(self, path: str, exclude: str = "") -> int:
+        """还有几个**其它**任务引用这个 APK 文件。
+
+        共享存储下同一个包只有一个文件、被多条任务共用，所以删任务不能直接
+        unlink —— 得先问一句"别人还用不用"。路径比较按字符串全等：
+        写入时统一用绝对路径，读回来也是同一个字符串，不需要再做规范化。
+        """
+        p = (path or "").strip()
+        if not p:
+            return 0
+        with self._c() as c:
+            row = c.execute(
+                "SELECT COUNT(*) n FROM jobs WHERE apk_path=? AND id<>?",
+                (p, (exclude or "").strip())).fetchone()
+        return int(row["n"] if row else 0)
+
+    def apk_paths(self) -> set:
+        """所有任务记录过的 APK 路径（用于识别存储里的无主文件）。"""
+        with self._c() as c:
+            rows = c.execute(
+                "SELECT DISTINCT apk_path FROM jobs WHERE apk_path<>''").fetchall()
+        return {str(r["apk_path"]) for r in rows}
+
     def delete(self, job_id: str, drop_files: bool = True) -> Dict[str, Any]:
-        """删除任务记录；默认连工作目录（报告、存档、APK 副本）一起清理。
+        """删除任务记录；默认连工作目录（报告、存档、APK）一起清理。
 
         为什么默认连文件一起删：报告里含被测 App 的采集数据（含设备标识符原值），
         留着不管等同于把样本永久留在服务器上。使用者点"删除"的预期就是"清掉"。
+
+        APK 文件走 `piiscan.apkstore.release`：共享存储下同一个包可能被多条任务
+        共用，只有**最后一个**引用它的任务离开才真正删文件；还有别人在用就保留，
+        并在 `apk_kept_by` 里说清被几个任务留着 —— 这不是失败，是省空间的前提。
         """
         job = self.get(job_id)
         if not job:
@@ -601,19 +638,33 @@ class JobDB:
                     removed.append(str(d))
                 except Exception as e:
                     return {"ok": False, "error": "删除工作目录失败：%s" % e}
-        # 上传的 APK 副本在 <workdir>/_uploads 下，记录里存的是绝对路径
+
         apk = job.get("apk_path") or ""
-        if drop_files and apk and job.get("source") == "upload":
-            p = Path(apk)
-            if p.exists() and "_uploads" in str(p):
-                try:
-                    p.unlink()
-                    removed.append(str(p))
-                except Exception:
-                    pass
+        kept_by = 0
+        apk_note = ""
+        if drop_files and apk:
+            from piiscan import apkstore
+            r = apkstore.release(self, job_id, apk, job.get("apk_store") or "")
+            if r.get("removed"):
+                removed.append(r["removed"])
+            kept_by = int(r.get("kept") or 0)
+            apk_note = r.get("reason") or ""
+            if not job.get("apk_store"):
+                # 加 apk_store 列之前的老任务：上传的副本当时放在
+                # <workdir>/_uploads 下（工作目录已在上一步整个删掉了，
+                # 这里只收那份共享的、不随任务目录走的原件）。
+                p = Path(apk)
+                if p.exists() and "_uploads" in str(p):
+                    try:
+                        p.unlink()
+                        removed.append(str(p))
+                    except Exception:
+                        pass
+
         with self._lock, self._c() as c:
             c.execute("DELETE FROM jobs WHERE id=?", (job_id,))
-        return {"ok": True, "removed": removed}
+        return {"ok": True, "removed": removed,
+                "apk_kept_by": kept_by, "apk_note": apk_note}
 
     def delete_many(self, job_ids: Sequence[str],
                     drop_files: bool = True) -> Dict[str, Any]:
@@ -631,6 +682,7 @@ class JobDB:
         deleted: List[str] = []
         skipped: List[Dict[str, str]] = []
         files = 0
+        apk_kept = 0
         seen = set()
         for raw in job_ids or ():
             jid = str(raw or "").strip()
@@ -652,6 +704,7 @@ class JobDB:
             if r.get("ok"):
                 deleted.append(jid)
                 files += len(r.get("removed") or [])
+                apk_kept += int(r.get("apk_kept_by") or 0)
             else:
                 skipped.append({"id": jid, "reason": r.get("error") or "删除失败"})
         return {
@@ -659,6 +712,8 @@ class JobDB:
             "deleted": deleted,
             "skipped": skipped,
             "files": files,
+            # 被别的任务继续引用的 APK 数量：删了记录但文件留着，要让人知道。
+            "apk_kept": apk_kept,
             "requested": len(seen),
         }
 
