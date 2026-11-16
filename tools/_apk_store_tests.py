@@ -180,6 +180,72 @@ def run(check) -> None:
     # ---- ⑪ 端到端：真走一次 HTTP 上传，确认落在哪、删任务是否带走 ----
     _e2e_upload(check)
 
+    # ---- ⑫ 目录选择框：环境里没有图形库时不许把 traceback 甩出来 ----
+    _pick_fallback(check)
+
+
+def _pick_fallback(check) -> None:
+    """目录选择框的降级路径。
+
+    起因：使用者那台机器的 Python 没装 tkinter（精简打包），点「选择目录…」
+    界面上直接出现一整段 `ModuleNotFoundError ... Traceback`。这不是故障，
+    是环境差异，应当换后端继续、换不动就提示手填。
+    """
+    from webapp import server as S
+
+    def _call(backends):
+        return S.pick_directory(backends)
+
+    def fail():
+        return "fail", "这个 Python 没有 tkinter"
+
+    r = _call([("powershell", fail), ("tkinter", fail)])
+    check("各后端都失败时回报可手填而非报错",
+          r.get("ok") is False and r.get("fallback") is True, r)
+    check("失败文案里没有 traceback", "Traceback" not in (r.get("error") or ""), r)
+    check("失败文案说清了怎么办", "绝对路径" in (r.get("error") or ""), r)
+    check("列出试过哪些后端", [t.get("backend") for t in r.get("tried") or []]
+          == ["powershell", "tkinter"], r)
+
+    def ok():
+        return "ok", r"D:\apk 目录"
+
+    r = _call([("powershell", fail), ("tkinter", ok)])
+    check("前一个后端不通就换下一个", r.get("ok") is True and r.get("via") == "tkinter", r)
+    check("换后端后仍拿到目录", r.get("dir") == r"D:\apk 目录", r)
+
+    def cancel():
+        return "cancel", ""
+
+    r = _call([("powershell", cancel)])
+    check("使用者取消与失败区分开",
+          r.get("ok") is True and r.get("cancelled") is True and r.get("dir") == "", r)
+
+    def boom():
+        raise OSError("炸了")
+
+    r = _call([("powershell", boom), ("tkinter", ok)])
+    check("某个后端抛异常不影响其它后端", r.get("ok") is True, r)
+
+    # 后端顺序：Windows 上先 PowerShell（系统自带），tkinter 永远垫底
+    names = [n for n, _ in S.pick_backends()]
+    check("tkinter 排最后一个", names[-1] == "tkinter", names)
+    check("Windows 上先用系统自带的选择框", os.name != "nt" or names[0] == "powershell", names)
+
+    # 无头环境：环境变量一设就短路，不必干等一个没人点的对话框
+    old = os.environ.get("PIISCAN_NO_DIALOG")
+    try:
+        os.environ["PIISCAN_NO_DIALOG"] = "1"
+        r = S.pick_directory()
+        check("PIISCAN_NO_DIALOG 时直接给出 fallback",
+              r.get("ok") is False and r.get("fallback") is True, r)
+        check("短路时不去猜后端", r.get("tried") == [], r)
+    finally:
+        if old is None:
+            os.environ.pop("PIISCAN_NO_DIALOG", None)
+        else:
+            os.environ["PIISCAN_NO_DIALOG"] = old
+
 
 def _post_file(url: str, fields: dict, filename: str, content: bytes):
     """不引 requests：平台本身只依赖标准库，测试也照做。"""
@@ -329,6 +395,42 @@ def _e2e_upload(check) -> None:
             with urllib.request.urlopen(rq, timeout=30) as r:
                 sw = json.loads(r.read().decode())
             check("清理接口可用", sw.get("ok") is True, sw)
+
+            # ---- 目录选择接口：没有图形库时必须是 200+fallback，不能是 500 ----
+            # 使用者那台机器的 Python 没装 tkinter，原来这条路径抛异常，
+            # 界面把 "ValueError: ... Traceback ..." 整段显示出来。
+            orig_pick = S.pick_backends
+            try:
+                def _pick():
+                    rq = urllib.request.Request(base + "/api/storage/pick", method="POST",
+                                                data=b"{}",
+                                                headers={"Content-Type": "application/json"})
+                    try:
+                        with urllib.request.urlopen(rq, timeout=30) as r:
+                            return r.status, json.loads(r.read().decode())
+                    except urllib.error.HTTPError as e:
+                        return e.code, json.loads(e.read().decode() or "{}")
+
+                S.pick_backends = lambda: [("fake", lambda: ("fail", "没有图形库"))]
+                stp, pk = _pick()
+                check("/pick 无图形环境时仍是 200（不是 500）", stp == 200, (stp, pk))
+                check("/pick 如实回报 fallback", pk.get("ok") is False
+                      and pk.get("fallback") is True, pk)
+                check("/pick 的文案里没有 traceback",
+                      "Traceback" not in (pk.get("error") or ""), pk)
+                check("/pick 的文案告诉人怎么办",
+                      "绝对路径" in (pk.get("error") or ""), pk)
+
+                chosen = str(tmp / "挑中的目录")
+                S.pick_backends = lambda: [("fake", lambda: ("ok", chosen))]
+                stp, pk = _pick()
+                check("/pick 选中后带回路径", stp == 200 and pk.get("dir") == chosen, pk)
+
+                S.pick_backends = lambda: [("fake", lambda: ("cancel", ""))]
+                stp, pk = _pick()
+                check("/pick 区分取消", stp == 200 and pk.get("cancelled") is True, pk)
+            finally:
+                S.pick_backends = orig_pick
 
             sty, sy = _setdir("")
             check("空值＝恢复默认位置",

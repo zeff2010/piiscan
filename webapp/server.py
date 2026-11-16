@@ -4,12 +4,15 @@
 """
 from __future__ import annotations
 
+import base64
+import importlib.util
 import io
 import json
 import mimetypes
 import os
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -1686,6 +1689,213 @@ def apk_store_adopt(db: Any, workdir: Path, src: str, filename: str,
 
 
 # ============================================================================
+#  在服务所在机器上弹一个目录选择框
+# ============================================================================
+#
+# 为什么要有多个后端：早先只调 tkinter，结果使用者那台机器的 Python 是精简
+# 打包的，**根本没装 tkinter**（`No module named '_tkinter'`），点一下就把
+# 一整段 traceback 甩到界面上。这不是故障，是环境差异 —— 应当换条路继续走，
+# 走不通就退回手填，而不是让使用者读栈。
+#
+# 各平台按"装得更普遍、效果更好"排列：
+#   Windows  PowerShell + FolderBrowserDialog（系统自带，与 Python 无关）
+#   macOS    osascript 的 choose folder（系统自带）
+#   Linux    zenity / kdialog（桌面环境一般有其一）
+#   兜底     tkinter（有就用，没有就跳过，连子进程都不起）
+#
+# 每个后端返回 (状态, 值)：状态 ok=选好了、cancel=使用者取消、fail=这条走不通。
+
+_PICK_TIMEOUT = 300          # 对话框等人操作的上限（秒）
+
+# PowerShell 侧的选择框脚本。用 -EncodedCommand（UTF-16LE + base64）传，
+# 中文提示语就不经过控制台代码页，避免出现"选择 APK 存储目¼"这类乱码。
+# 隐藏的顶层 owner 窗口是为了让对话框落在最前面 —— 从浏览器点一下，
+# 弹窗跑到浏览器后面的话，使用者会以为没反应。
+_PS_PICK_SCRIPT = r"""
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$owner = New-Object System.Windows.Forms.Form
+$owner.TopMost = $true
+$owner.ShowInTaskbar = $false
+$owner.FormBorderStyle = 'None'
+$owner.StartPosition = 'Manual'
+$owner.Size = New-Object System.Drawing.Size(1, 1)
+$owner.Location = New-Object System.Drawing.Point(-2000, -2000)
+$owner.Show()
+$d = New-Object System.Windows.Forms.FolderBrowserDialog
+$d.Description = '选择 APK 存储目录'
+$d.ShowNewFolderButton = $true
+$r = $d.ShowDialog($owner)
+$owner.Close()
+if ($r -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output ('OK=' + $d.SelectedPath) }
+else { Write-Output 'CANCEL' }
+"""
+
+
+def _pick_powershell(script: Optional[str] = None,
+                     timeout: float = 0) -> Tuple[str, str]:
+    """Windows：用 .NET 的文件夹选择框，不依赖 Python 装了什么。
+
+    `script` / `timeout` 只在自检里替换（用一段不弹窗的脚本验编码与解析），
+    正常调用保持默认值。
+    """
+    exe = shutil.which("powershell.exe") or shutil.which("powershell")
+    if not exe:
+        return "fail", "找不到 powershell.exe"
+    script = _PS_PICK_SCRIPT if script is None else script
+    enc = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    cmd = [exe, "-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", enc]
+    flags = 0
+    if os.name == "nt":
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        p = subprocess.run(cmd, capture_output=True,
+                           timeout=(timeout or _PICK_TIMEOUT),
+                           encoding="utf-8", errors="replace", creationflags=flags)
+    except subprocess.TimeoutExpired:
+        return "cancel", ""            # 挂着不选＝当取消，别把线程一直占住
+    except OSError as e:
+        return "fail", "启动 powershell 失败：%s" % e
+    out = (p.stdout or "").strip()
+    if out.startswith("OK="):
+        return "ok", out[3:].strip()
+    if out == "CANCEL":
+        return "cancel", ""
+    tail = ((p.stderr or "").strip().splitlines() or [""])[-1][:160]
+    return "fail", "powershell 退出码 %s %s" % (p.returncode, tail)
+
+
+def _pick_osascript() -> Tuple[str, str]:
+    """macOS：系统自带的 choose folder。"""
+    exe = shutil.which("osascript")
+    if not exe:
+        return "fail", "找不到 osascript"
+    cmd = [exe, "-e", 'POSIX path of (choose folder with prompt "选择 APK 存储目录")']
+    try:
+        p = subprocess.run(cmd, capture_output=True, timeout=_PICK_TIMEOUT,
+                           encoding="utf-8", errors="replace")
+    except subprocess.TimeoutExpired:
+        return "cancel", ""
+    except OSError as e:
+        return "fail", "启动 osascript 失败：%s" % e
+    if p.returncode != 0:
+        err = (p.stderr or "")
+        # 使用者点取消时 osascript 也返回非零，必须与真失败区分开
+        if "User canceled" in err or "-128" in err:
+            return "cancel", ""
+        return "fail", "osascript 失败：%s" % err.strip()[-160:]
+    return "ok", (p.stdout or "").strip()
+
+
+def _pick_linux_dialog() -> Tuple[str, str]:
+    """Linux：zenity 或 kdialog，桌面环境一般至少有一个。"""
+    if shutil.which("zenity"):
+        cmd = ["zenity", "--file-selection", "--directory",
+               "--title=选择 APK 存储目录"]
+    elif shutil.which("kdialog"):
+        cmd = ["kdialog", "--getexistingdirectory", str(Path.home()),
+               "--title", "选择 APK 存储目录"]
+    else:
+        return "fail", "没有 zenity / kdialog"
+    try:
+        p = subprocess.run(cmd, capture_output=True, timeout=_PICK_TIMEOUT,
+                           encoding="utf-8", errors="replace")
+    except subprocess.TimeoutExpired:
+        return "cancel", ""
+    except OSError as e:
+        return "fail", "启动选择框失败：%s" % e
+    if p.returncode != 0:
+        return "cancel", ""          # zenity 取消返回 1
+    return "ok", (p.stdout or "").strip()
+
+
+def _pick_tkinter() -> Tuple[str, str]:
+    """兜底：tkinter 版目录框。没装就立刻返回，不起子进程。"""
+    if importlib.util.find_spec("tkinter") is None:
+        return "fail", "这个 Python 没有 tkinter"
+    code = (
+        "import tkinter as tk\n"
+        "from tkinter import filedialog\n"
+        "r = tk.Tk(); r.withdraw()\n"
+        "try: r.attributes('-topmost', True)\n"
+        "except Exception: pass\n"
+        "print('OK=' + (filedialog.askdirectory(title='选择 APK 存储目录') or ''))\n"
+        "r.destroy()\n"
+    )
+    try:
+        p = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                           timeout=_PICK_TIMEOUT, encoding="utf-8",
+                           errors="replace")
+    except subprocess.TimeoutExpired:
+        return "cancel", ""
+    except OSError as e:
+        return "fail", "启动 tkinter 失败：%s" % e
+    out = (p.stdout or "").strip()
+    if p.returncode != 0:
+        return "fail", "tkinter 退出码 %s" % p.returncode
+    if out.startswith("OK="):
+        path = out[3:].strip()
+        return ("ok", path) if path else ("cancel", "")
+    return "cancel", ""
+
+
+def pick_backends() -> List[Tuple[str, Any]]:
+    """按当前平台列出可用后端（顺序即尝试顺序，最后一个总是 tkinter）。"""
+    out: List[Tuple[str, Any]] = []
+    if os.name == "nt":
+        out.append(("powershell", _pick_powershell))
+    elif sys.platform == "darwin":
+        out.append(("osascript", _pick_osascript))
+    else:
+        out.append(("zenity/kdialog", _pick_linux_dialog))
+    out.append(("tkinter", _pick_tkinter))
+    return out
+
+
+def pick_directory(backends: Optional[List[Tuple[str, Any]]] = None) -> Dict[str, Any]:
+    """依次尝试各后端，返回给界面用的结果。
+
+    返回值三态：
+      ok=True, dir=路径      选好了
+      ok=True, dir="", cancelled=True   使用者取消
+      ok=False, fallback=True          一条路都走不通，界面改手填
+    `error` 永远是一句人话，**不含 traceback**；细节放进 `tried` 供排查。
+
+    `PIISCAN_NO_DIALOG=1` 直接返回 fallback：无头服务器上不必等一个
+    永远不会被点的对话框干等 5 分钟，自检也靠它避免真的弹窗。
+    """
+    if os.environ.get("PIISCAN_NO_DIALOG", "").strip().lower() in ("1", "true", "yes"):
+        return {
+            "ok": False, "fallback": True,
+            "error": "已按 PIISCAN_NO_DIALOG 跳过系统目录选择框。"
+                     "请在输入框里直接填绝对路径，例如 D:\\apk。",
+            "tried": [],
+        }
+    tried: List[Dict[str, str]] = []
+    for name, fn in (backends if backends is not None else pick_backends()):
+        try:
+            state, val = fn()
+        except Exception as e:                      # 单个后端炸了不该影响别的
+            tried.append({"backend": name, "error": "%s: %s" % (type(e).__name__, e)})
+            continue
+        if state == "ok":
+            return {"ok": True, "dir": val, "via": name, "tried": tried}
+        if state == "cancel":
+            return {"ok": True, "dir": "", "cancelled": True, "via": name,
+                    "tried": tried}
+        tried.append({"backend": name, "error": val})
+    names = "、".join(t["backend"] for t in tried) or "无"
+    return {
+        "ok": False,
+        "fallback": True,
+        "error": "这台机器弹不出系统目录选择框（已试：%s）。请在输入框里直接填绝对路径，"
+                 "例如 D:\\apk 或 /data/apk。" % names,
+        "tried": tried,
+    }
+
+
+# ============================================================================
 #  测试机清单
 # ============================================================================
 
@@ -2268,34 +2478,12 @@ class Handler(BaseHTTPRequestHandler):
     def _storage_pick(self):
         """在服务所在的这台机器上弹一个目录选择框。
 
-        为什么用子进程：Tk 的对象必须建在它自己的主线程上，HTTP 处理线程里
-        直接建会偶发崩溃。独立进程起来、选完打印路径、退出，最稳。
-        服务通常只监听本机，弹窗就出现在使用者眼前；若没有桌面环境
-        （远程/无头服务器），这里会失败并如实回报，界面上仍可手填路径。
+        具体走哪条路由 `pick_directory()` 决定（Windows 用系统自带的
+        FolderBrowserDialog，不依赖 Python 有没有装 tkinter）。
+        一条路都走不通时**不报错**，返回 fallback 让界面提示手填 ——
+        "没装图形库"是环境差异，不是故障，不该朝使用者甩 traceback。
         """
-        import subprocess
-        import sys as _sys
-        code = (
-            "import tkinter as tk\n"
-            "from tkinter import filedialog\n"
-            "r = tk.Tk(); r.withdraw()\n"
-            "try: r.attributes('-topmost', True)\n"
-            "except Exception: pass\n"
-            "print(filedialog.askdirectory(title='选择 APK 存储目录') or '')\n"
-            "r.destroy()\n"
-        )
-        try:
-            p = subprocess.run([_sys.executable, "-c", code],
-                               capture_output=True, text=True, timeout=600,
-                               encoding="utf-8", errors="replace")
-        except Exception as e:
-            raise ValueError("无法打开目录选择框（环境可能没有桌面）：%s；"
-                             "请直接在输入框里填绝对路径" % e)
-        if p.returncode != 0:
-            raise ValueError("目录选择框打开失败（环境可能没有桌面）：%s；"
-                             "请直接在输入框里填绝对路径"
-                             % ((p.stderr or "").strip()[-200:] or "未知原因"))
-        return self._json({"ok": True, "dir": (p.stdout or "").strip()})
+        return self._json(pick_directory())
 
     # ------------------------------------------------------------ AI 连通性
     def _ai_ping(self):

@@ -2908,6 +2908,9 @@ if ($("#aiwrap")) {
 // 删任务时只有**最后一个**引用它的任务离开才删文件。
 // 换目录不搬已有文件：搬几百 MB 失败率高，而老任务记的是绝对路径，留在原处照样能复现。
 let STOR = null;
+// 「这台机器弹不出选择框」这类环境提示：不是故障，写进卡片里常驻，
+// 而不是弹个 toast 就消失 —— 使用者回头还能看见该怎么做。
+let STOR_NOTE = "";
 
 async function loadStorage() {
   const sum = $("#storsum");
@@ -2951,13 +2954,20 @@ function renderStorage() {
   }
   box.innerHTML = bits.join("");
   if (tip) {
-    tip.innerHTML = '同一个包只存一份：重复上传、重复下载、同一 App 复测都共用这个文件，'
-      + '多个任务在报告里指向同一个路径。删除任务时，只有当<b>没有别的任务</b>还在用这个包，'
-      + '才会真正从磁盘删掉；否则保留并在删除结果里说明还剩几个任务在用。'
-      + (r.is_default ? ('<br/>当前用默认位置，想换到别的盘可以点右上「选择目录…」。')
-                      : ('<br/>默认位置是 <code>' + esc(r.default_dir) + '</code>，'
-                         + '点「用默认位置」可以切回去。'));
+    tip.innerHTML = storTipBase()
+      + (STOR_NOTE ? ('<br/><b style="color:var(--mid)">' + STOR_NOTE + '</b>') : '');
   }
+}
+
+function storTipBase() {
+  const r = STOR;
+  if (!r) return "";
+  return '同一个包只存一份：重复上传、重复下载、同一 App 复测都共用这个文件，'
+    + '多个任务在报告里指向同一个路径。删除任务时，只有当<b>没有别的任务</b>还在用这个包，'
+    + '才会真正从磁盘删掉；否则保留并在删除结果里说明还剩几个任务在用。'
+    + (r.is_default ? ('<br/>当前用默认位置，想换到别的盘可以点右上「选择目录…」。')
+                    : ('<br/>默认位置是 <code>' + esc(r.default_dir) + '</code>，'
+                       + '点「用默认位置」可以切回去。'));
 }
 
 async function storSave(dir) {
@@ -2977,9 +2987,22 @@ async function storPick() {
   toast("正在打开目录选择框…（在运行平台的这台电脑上）");
   try {
     const r = await fetch("/api/storage/pick", {method: "POST"}).then(x => x.json());
-    if (!r.ok) { toast(r.error || "打不开选择框，请直接填写绝对路径"); return; }
-    if (!r.dir) { toast("没有选中目录"); return; }
+    if (!r.ok) {
+      // 环境里没有可用的图形选择框：不是故障，别把技术细节甩给使用者
+      STOR_NOTE = r.fallback
+        ? '这台机器弹不出系统目录选择框（试过：'
+          + ((r.tried || []).map(t => t.backend).join("、") || "无")
+          + '）。请直接在上面的输入框里填绝对路径，例如 <code>D:\\apk</code>。'
+        : ('打不开选择框：' + (r.error || "未知原因"));
+      renderStorage();
+      const inp = $("#stordir");
+      if (inp) { inp.focus(); inp.select(); }
+      return;
+    }
+    STOR_NOTE = "";
+    if (!r.dir) { toast("没有选中目录"); renderStorage(); return; }
     $("#stordir").value = r.dir;
+    renderStorage();
     toast("已选中，点「保存」生效");
   } catch (e) { toast("请求失败：" + e); }
 }
