@@ -473,6 +473,17 @@ def t_db_batch_delete():
     BT.run(check)
 
 
+def t_consent_tier():
+    """1 档「仅同意前」的时序口径（离线）。
+
+    1 档不点同意、不遍历，整轮都在未同意状态下 —— 报告里不许出现
+    "同意动作前后 1500 ms 窗口"这种凭空造出来的边界（使用者 2026-11-16 指出）。
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import _consent_tier_tests as CT
+    CT.run(check)
+
+
 def t_apk_store():
     """APK 共享存储：按内容去重、删任务按引用清理（离线）。
 
@@ -937,6 +948,7 @@ def main() -> int:
     t_ui_dump_resilience()
     t_db_batch_delete()
     t_apk_store()
+    t_consent_tier()
     t_stack_attribution()
     t_no_device_mode()
     t_queue_order()

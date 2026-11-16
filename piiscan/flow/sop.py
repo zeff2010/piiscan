@@ -599,7 +599,9 @@ class FlowRunner:
                 pr.timing = ("已捕获同意动作，但未记录到同意时刻"
                              "（分水岭有效、时序数值不可用）")
             else:
-                pr.timing = "未捕获到同意事件，无法定位同意时刻"
+                pr.timing = ("本档位不执行同意动作（仅同意前），无同意时刻"
+                             if self._consent_absent()
+                             else "未捕获到同意事件，无法定位同意时刻")
             return
 
         # ---- P2 特殊：政策采集与首启观测在时间上本来就重叠 ----
@@ -1549,7 +1551,13 @@ class FlowRunner:
 
         # ⑤ 同意前观察窗口 —— 这是"未经同意收集"的取证窗口
         cms = getattr(sc, "consent_elapsed_ms", None) if sc else None
-        if cms:
+        _no_consent = self._consent_absent()
+        if _no_consent:
+            # 1 档：没有同意动作，也就不存在"窗口终点"，整轮都在未同意状态下
+            steps.append("⑤ 冷启动后保持未同意状态静置观察（本档位不执行「同意」动作、"
+                         "不做界面遍历），共记录未同意状态行为 %d 条"
+                         % self._pre_count())
+        elif cms:
             steps.append("⑤ 保持未同意状态观察至第 %.1f 秒（本轮确证在此窗口内的行为 %d 条；"
                          "另有发生在同意前后 %.1f 秒内、时序不可分辨的事件不计入）；"
                          "判定口径：只把**明确早于同意**时间戳的个人信息读取"
@@ -1565,7 +1573,10 @@ class FlowRunner:
         # ⑥ 同意动作
         src = getattr(sc, "consent_source", "") if sc else ""
         act = (src.split(":", 1)[1] if ":" in (src or "") else "") or "同意"
-        if cms:
+        if _no_consent:
+            steps.append("⑥ 本档位不执行「同意」动作（1 档「仅同意前」：取到政策正文即收工），"
+                         "因此本轮没有「同意后」阶段")
+        elif cms:
             steps.append("⑥ 点击「%s」（本轮在第 %.1f 秒捕获到该事件），"
                          "随后开始同意后功能遍历" % (act, cms / 1000.0))
         else:
@@ -1600,6 +1611,35 @@ class FlowRunner:
                 steps.append("⑧ 【第 %s 项 %s】复现要点：%s" % (r.num, r.title, key))
         fr.repro = steps
 
+    def _consent_absent(self) -> bool:
+        """本轮是否**确定没有同意动作**（不是"没捕获到"，而是根本没做这一动作）。
+
+        为什么要区分（使用者 2026-11-16 指出）：1 档「仅同意前」的口径是
+        **取到政策正文就收工，不点同意、不遍历**。整轮所有读取本来就发生在
+        未同意状态下，不存在"同意动作前后 1500 ms 窗口"这件事。
+        早先 `consent_ms is None` 一律判"时序不可分辨"，于是 1 档的报告写成
+        "本次在同意动作前后 1500 ms 窗口内观测到…""同意时刻：未记录" ——
+        说了一个根本不存在的窗口，属于结论与事实不符。
+
+        判据只用两样可核对的事实：档位声明了 consent_only，且本轮没有登记到
+        任何同意动作。2~4 档即使没捕获到同意动作，也不能断言"没有同意" ——
+        可能是登记链断了（以观书法 mbsf6 就是这么误判的），那种情形仍按
+        "无法分辨先后"保守处理。
+        """
+        sc = self.scan
+        if sc is None:
+            return False
+        if getattr(sc, "consent_given", False):
+            return False
+        if getattr(sc, "consent_elapsed_ms", None) is not None:
+            return False
+        try:
+            from ..config import DEPTH_PROFILES
+            prof = DEPTH_PROFILES.get(getattr(sc, "depth", "") or "") or {}
+            return bool(prof.get("consent_only"))
+        except Exception:
+            return False
+
     def _pre_count(self) -> int:
         """确证发生在同意之前的事件数（不含时序不可分辨的边界事件）。"""
         if self.scan is None:
@@ -1608,7 +1648,8 @@ class FlowRunner:
                if getattr(e, "before_consent", False)
                and not getattr(e, "noise", "")]
         b, _e, _a = CMP.split_by_consent(
-            raw, getattr(self.scan, "consent_elapsed_ms", None))
+            raw, getattr(self.scan, "consent_elapsed_ms", None),
+            consent_absent=self._consent_absent())
         return len(b)
 
     def _repro_key(self, r) -> str:
@@ -1798,7 +1839,16 @@ class FlowRunner:
         #   这里按「与同意时刻的距离 + 调用栈」重新切一遍，时序不可分辨的
         #   单独放一边，不参与"未经同意收集"的认定。
         _cms = getattr(self.scan, "consent_elapsed_ms", None)
-        pre, edge_pre, _post = CMP.split_by_consent(raw_pre, _cms)
+        # 1 档「仅同意前」不点同意：整轮都在未同意状态下，不存在"同意前后"窗口。
+        # 这类轮次的事件必须全部算作"确认在同意前"，否则报告会写出一个
+        # 不存在的 1500 ms 窗口（见 _consent_absent 的注释）。
+        _absent = self._consent_absent()
+        pre, edge_pre, _post = CMP.split_by_consent(raw_pre, _cms,
+                                                   consent_absent=_absent)
+        # 结论句的时态前提：1 档没有同意动作，不能写"在同意之前"（那暗示
+        # 后面有个同意），要写"本轮未执行同意动作、全程处于未同意状态"。
+        _p1_pre = ("首次打开 App，本轮未执行「同意」动作，App 全程处于未同意状态，"
+                   if _absent else "首次打开 App，在用户同意隐私政策之前，")
         # 采集（取到值的）与外发（数据离开设备）分开统计 —— 外发只能证"送出去"，
         # 不能证"收集了什么"，混在一起会把联网次数当成收集次数。
         collected = CMP.collected_types(pre, device_ids=self.fr.device_identities)
@@ -1908,7 +1958,7 @@ class FlowRunner:
                               "按证据不足降为疑似，需人工结合沙箱精检复核"])
                 self._set(
                     "Q002", SUSPECT, phase="P1", level="中", confidence="疑似",
-                    desc="首次打开 App，在用户同意隐私政策之前观测到%s的读取，"
+                    desc=_p1_pre + "观测到%s的读取，"
                          "但未捕获到调用栈，无法确认由被测应用发起，"
                          "未认定为「未经用户同意收集」，需人工复核" % names,
                     evidence=[Evidence("frida", "同意前收集 %d 次" % len(pre), names, "P1")],
@@ -1922,7 +1972,7 @@ class FlowRunner:
             else:
                 self._set(
                     "Q002", FAIL, phase="P1", level="高", confidence="确证",
-                    desc="首次打开 App，在用户同意隐私政策之前，App 已收集%s" % names,
+                    desc=_p1_pre + "App 已收集%s" % names,
                     evidence=[Evidence("frida", "同意前收集 %d 次" % len(pre), names, "P1",
                                        {"types": {k: v["count"] for k, v in collected.items()},
                                         "members": {k: v.get("members", {})
@@ -1946,7 +1996,8 @@ class FlowRunner:
             _n_strict = len(pre)
             facts = [["时序不可分辨的事件", "%d 条" % _n_edge],
                      ["确证在同意前的事件", "%d 条" % _n_strict],
-                     ["同意时刻", ("冷启动后 %.1f ms" % _cms) if _cms else "未记录"]]
+                     ["同意时刻", ("冷启动后 %.1f ms" % _cms) if _cms
+                      else "未记录（本轮捕获到同意动作，但未能定位到时刻）"]]
             for row in CMP.collected_facts(collected_edge, _cms):
                 facts.append([row[0], "%s：%s" % (row[1], row[2])])
                 facts.append(["　调用点与时刻", row[3]])
@@ -1958,23 +2009,38 @@ class FlowRunner:
                              "（如 AgreementDialog.onConfirm），"
                              "与同意时刻相差 %d ms 以内，无法认定为未经同意收集"
                              % (CMP.CONSENT_EDGE_MS)])
+            # ★ 没有同意时刻时**不能**说"1500 ms 窗口内"（会凭空造出一个窗口）。
+            #   只有"捕获到同意动作但没定位到时刻"这一种情形会走到这里。
+            if _cms:
+                _edge_desc = ("首次打开 App，本次在同意动作前后 %d ms 窗口内观测到%s的读取"
+                              "（时序不可分辨：读取与同意事件的上报通道存在延迟差，"
+                              "且调用栈显示位于同意回调链中）；"
+                              "确证发生在同意之前的事件为 %d 条，未取得有效个人信息取值。"
+                              "该项需人工结合录屏或加大同意前静置时长复核"
+                              % (CMP.CONSENT_EDGE_MS, _ename, _n_strict))
+                _edge_ev = "边界窗口内收集（时序不可分辨）"
+            else:
+                _edge_desc = ("首次打开 App，本轮捕获到「同意」动作，但未记录到同意时刻，"
+                              "因此无法判断这些%s的读取发生在同意之前还是之后"
+                              "（时序不可分辨）；确证发生在同意之前的事件为 %d 条，"
+                              "未取得有效个人信息取值。该项需人工结合录屏复核"
+                              % (_ename, _n_strict))
+                _edge_ev = "同意动作前后收集（时刻未记录，时序不可分辨）"
             self._set(
                 "Q002", SUSPECT, phase="P1", level="中", confidence="疑似",
-                desc="首次打开 App，本次在同意动作前后 %d ms 窗口内观测到%s的读取"
-                     "（时序不可分辨：读取与同意事件的上报通道存在延迟差，"
-                     "且调用栈显示位于同意回调链中）；"
-                     "确证发生在同意之前的事件为 %d 条，未取得有效个人信息取值。"
-                     "该项需人工结合录屏或加大同意前静置时长复核"
-                     % (CMP.CONSENT_EDGE_MS, _ename, _n_strict),
-                evidence=[Evidence("frida", "边界窗口内收集（时序不可分辨）",
+                desc=_edge_desc,
+                evidence=[Evidence("frida", _edge_ev,
                                    "%d 条" % _n_edge, "P1")],
                 facts=facts,
                 stacks=CMP.stacks_by_type(collected_edge, edge_pre, limit=3,
                                           device_ids=self.fr.device_identities)[0],
             )
             self._set("Q003", SUSPECT, phase="P1", level="中", confidence="疑似",
-                      desc="同意动作前后存在%s的读取，但时序不可分辨，"
-                           "无法认定为「未经用户同意收集」，需人工复核" % _ename,
+                      desc=(("同意动作前后存在%s的读取，但时序不可分辨，"
+                             "无法认定为「未经用户同意收集」，需人工复核" % _ename)
+                            if _cms else
+                            ("存在%s的读取，但同意时刻未记录、无法分辨先后，"
+                             "未认定为「未经用户同意收集」，需人工复核" % _ename)),
                       evidence=[Evidence("frida", "边界窗口内收集", _ename, "P1")],
                       facts=facts)
         elif sinks["before_consent"]:
@@ -1986,7 +2052,7 @@ class FlowRunner:
             hosts = "、".join(list(sinks["before_hosts"])[:6])
             self._set(
                 "Q002", NOT_TESTED, phase="P1",
-                reason="首次打开 App，在用户同意隐私政策之前观测到向 %s 等 %d 个地址"
+                reason=_p1_pre + "观测到向 %s 等 %d 个地址"
                        "发起网络连接共 %d 次；本轮未部署流量监测，未取得传输内容，"
                        "无法判断是否上传了个人信息，因此不对「同意前已开始收集」下结论。"
                        "如需认定，应以抓包或沙箱精检方式复核"
@@ -2000,6 +2066,18 @@ class FlowRunner:
                                         "（未部署流量监测，不判断是否传输个人信息）"]],
                 stacks=stacks_of(pre_sink)[:2],
             )
+            # Q003（是否已实际取得取值）也要在这里给出结论：否则它会落到
+            # 检查表兜底的"缺少阶段 P3 的证据"上 —— 而真相是"只有连接、没有取值"，
+            # 与同意后遍历跑没跑无关。
+            self._set(
+                "Q003", NOT_TESTED, phase="P1",
+                reason="本轮仅在未同意状态下观测到向 %s 等 %d 个地址发起网络连接 %d 次，"
+                       "未取得任何个人信息取值；且未部署流量监测，无法判断连接中"
+                       "是否携带个人信息，因此不对「已实际取得取值」下结论"
+                       % (hosts, len(sinks["before_hosts"]), sinks["before_consent"]),
+                facts=[["同意前发起网络连接", "%d 次" % sinks["before_consent"]],
+                       ["个人信息取值", "未取得"],
+                       ["本项观测范围", "仅记录连接目标地址与次数，未记录传输内容"]])
         else:
             # ★「没观测到」不等于「没问题」（简小知实测）：
             #   采集器目前只做静置观察，不会去点按钮、翻页面。如果这轮压根没
@@ -2023,20 +2101,55 @@ class FlowRunner:
                 #   而存档里其实有 44 条同意前事件 —— 复核员一对数就会看到
                 #   报告与证据自相矛盾。数字一律从本轮事件里现算，不写死的句子。
                 _n_all = len(pre) + len(edge_pre)
+                if _absent:
+                    # 1 档：本轮没有同意动作，谈不上"同意之前/之后"，只有"未同意状态"。
+                    _nt_reason = ("本轮未执行「同意」动作（全程处于未同意状态），"
+                                  "共观测到 %d 条行为事件，但没有一条取到有效个人信息取值，"
+                                  "也未观测到外发，证据等级不足以认定「已收集」，"
+                                  "同样不足以认定「未收集」；此外本档位不做界面交互探索，"
+                                  "未触发的界面路径不在结论范围内。"
+                                  "如需认定，应在未同意状态下主动遍历后复测"
+                                  % _n_all)
+                    _nt_scope = "0 步（本档位仅静置观察，不点同意、不遍历）"
+                    _nt_facts = [["未同意状态事件数", "%d 条" % _n_all],
+                                 ["同意动作", "本轮未执行（1 档「仅同意前」口径）"]]
+                elif _cms:
+                    _nt_reason = ("本轮在同意之前共观测到 %d 条行为事件（时序可分辨 %d 条、"
+                                  "落在同意动作前后 %d ms 内因而无法分辨先后的 %d 条），"
+                                  "但没有一条取到有效个人信息取值，也未观测到同意前外发，"
+                                  "证据等级不足以认定「已收集」同样不足以认定「未收集」；"
+                                  "此外本轮未在未同意状态下执行主动交互探索，"
+                                  "未触发的界面路径不在结论范围内。需在未同意状态下主动遍历后复测"
+                                  % (_n_all, len(pre), CMP.CONSENT_EDGE_MS, len(edge_pre)))
+                    _nt_scope = "0 步（本轮仅静置观察）"
+                    _nt_facts = [["同意前事件数", "%d 条（时序可分辨 %d 条 / 不可分辨 %d 条）"
+                                  % (_n_all, len(pre), len(edge_pre))]]
+                else:
+                    _nt_reason = ("本轮捕获到「同意」动作，但未记录到同意时刻，"
+                                  "共观测到 %d 条行为事件而无法分辨先后，"
+                                  "且没有一条取到有效个人信息取值、未观测到外发，"
+                                  "证据等级不足以认定「已收集」同样不足以认定「未收集」；"
+                                  "此外本轮未在未同意状态下执行主动交互探索，"
+                                  "未触发的界面路径不在结论范围内。需人工结合录屏复核"
+                                  % _n_all)
+                    _nt_scope = "0 步（本轮仅静置观察）"
+                    _nt_facts = [["行为事件数", "%d 条（同意时刻未记录，先后不可分辨）"
+                                  % _n_all]]
                 self._set("Q002", NOT_TESTED, phase="P1",
-                          reason="本轮在同意之前共观测到 %d 条行为事件（时序可分辨 %d 条、"
-                                 "落在同意动作前后 %d ms 内因而无法分辨先后的 %d 条），"
-                                 "但没有一条取到有效个人信息取值，也未观测到同意前外发，"
-                                 "证据等级不足以认定「已收集」同样不足以认定「未收集」；"
-                                 "此外本轮未在未同意状态下执行主动交互探索，"
-                                 "未触发的界面路径不在结论范围内。需在未同意状态下主动遍历后复测"
-                                 % (_n_all, len(pre), CMP.CONSENT_EDGE_MS, len(edge_pre)),
+                          reason=_nt_reason,
                           evidence=[Evidence("frida", "同意前事件 %d 条，均未取到有效取值"
                                              % _n_all, "", "P1")],
-                          facts=[["同意前事件数", "%d 条（时序可分辨 %d 条 / 不可分辨 %d 条）"
-                                  % (_n_all, len(pre), len(edge_pre))],
+                          facts=_nt_facts + [
                                  ["证据等级", "仅命中调用，未取到有效取值（不足以认定）"],
-                                 ["未同意状态交互探索", "0 步（本轮仅静置观察）"]])
+                                 ["未同意状态交互探索", _nt_scope]])
+                # Q003 同理：不写的话会落到"缺少阶段 P3 的证据"，
+                # 而 P3 在 1 档本来就是不执行的阶段。
+                self._set("Q003", NOT_TESTED, phase="P1",
+                          reason=("本轮未取得任何个人信息取值，"
+                                  "无法认定「已实际取得个人信息」，也无法认定「未取得」%s"
+                                  % ("；本档位不执行同意动作与界面遍历，"
+                                     "未触发的路径不在结论范围内" if _absent else "")),
+                          facts=_nt_facts)
         self._end(pr, M.PHASE_DONE)
         return pr
 
@@ -2981,6 +3094,14 @@ class FlowRunner:
             "开始记录同意后行为",
         ]
         if not given:
+            if self._consent_absent():
+                # 1 档：不点同意是**设计如此**，不是"没测到"。写成告警会让
+                # 复核员以为漏采了一次同意动作，进而怀疑同意前的时序结论。
+                pr.steps = ["本档位（1 档·仅同意前）：取到政策正文后结束，"
+                            "不执行「同意」动作"]
+                self._end(pr, M.PHASE_SKIPPED,
+                          "本档位不执行同意动作，无「同意后」阶段")
+                return pr
             pr.warnings.append("本次未捕获到「同意」动作，同意前/后的时间边界不确定")
             self._end(pr, M.PHASE_PARTIAL, "未捕获到同意事件")
             return pr
@@ -3069,10 +3190,13 @@ class FlowRunner:
             # 「没命中」也要把观测数据写出来。只留一句"未取得充分证据"，
             # 复核员分不清是"没超频"还是"压根没测"。
             top = "；".join("%s×%d" % kv for kv in hot) or "无有效调用记录"
+            # 1 档没有"同意后"阶段，不能写成"同意后未达阈值"——那是把没观测说成观测过。
+            _scope = ("本轮未执行「同意」动作（无同意后阶段），未同意状态下观测到的"
+                      if self._consent_absent() else "本轮同意后")
             self._item("Q011").reason = (
-                "本轮同意后各接口调用次数均未达高频阈值（Top5：%s），"
+                "%s各接口调用次数均未达高频阈值（Top5：%s），"
                 "未出现单位时间内异常高频调用。如需更严格的结论（例如后台静默高频采集），"
-                "应延长采集时段或提高采样密度" % top)
+                "应延长采集时段或提高采样密度" % (_scope, top))
         # ---- 权限申请场景 → Q026（申请权限/收集敏感信息时是否同步告知目的）----
         # 这一项此前从未真正判过，报告里恒为"未捕获到权限弹窗"。
         # 采集侧现在逐次记录：申请了哪个权限、弹窗原文、弹窗**之前**那一屏写了什么。

@@ -466,13 +466,23 @@ def heal_consent_ms(events: Iterable[Any], consent_ms: Optional[int]) -> Tuple[
 
 
 def classify_consent(ev: Any, consent_ms: Optional[int],
-                     window: int = CONSENT_EDGE_MS) -> str:
+                     window: int = CONSENT_EDGE_MS,
+                     consent_absent: bool = False) -> str:
     """把一个事件归入 before / edge / after。
 
     edge = 时序不可分辨（离同意太近，或明显是同意动作链里的一环）。
     这类事件**不能**用来支撑「未经同意收集」，也不能算作同意后，
     只能如实写"发生在同意动作前后，时序不可分辨"。
+
+    `consent_absent=True` 表示**本轮压根没有同意动作**（1 档「仅同意前」：
+    取到政策正文即收工，不点同意）。这时不存在"同意前后"这回事，
+    所有读取都发生在未同意状态下 —— 必须归入 before。
+    早先这里只看 `consent_ms is None` 就一律判 edge，于是 1 档跑出来写成
+    "在同意动作前后 1500 ms 窗口内""同意时刻未记录"，等于说了一个
+    根本不存在的窗口（使用者 2026-11-16 指出）。
     """
+    if consent_absent:
+        return "before"
     if looks_like_consent_action(ev):
         return "edge"
     t = getattr(ev, "elapsed_ms", None)
@@ -488,12 +498,16 @@ def classify_consent(ev: Any, consent_ms: Optional[int],
 
 
 def split_by_consent(events: Iterable[Any], consent_ms: Optional[int],
-                     window: int = CONSENT_EDGE_MS
+                     window: int = CONSENT_EDGE_MS,
+                     consent_absent: bool = False
                      ) -> Tuple[List[Any], List[Any], List[Any]]:
-    """把事件切成 (确认在同意前, 时序不可分辨, 同意后)。"""
+    """把事件切成 (确认在同意前, 时序不可分辨, 同意后)。
+
+    `consent_absent=True`（本轮没有同意动作）时全部归入"确认在同意前"。
+    """
     b, e, a = [], [], []
     for ev in events:
-        k = classify_consent(ev, consent_ms, window)
+        k = classify_consent(ev, consent_ms, window, consent_absent)
         (b if k == "before" else e if k == "edge" else a).append(ev)
     return b, e, a
 
