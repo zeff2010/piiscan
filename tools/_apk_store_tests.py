@@ -183,6 +183,40 @@ def run(check) -> None:
     # ---- ⑫ 目录选择框：环境里没有图形库时不许把 traceback 甩出来 ----
     _pick_fallback(check)
 
+    # ---- ⑬ Windows 选择框脚本：真编一遍，别让它在使用者机器上才炸 ----
+    _pick_win_script(check)
+
+
+def _pick_win_script(check) -> None:
+    """Windows 那段 PowerShell 脚本的硬约束。
+
+    踩过两次：① C# 里 `out uint` 传了 IntPtr，编译不过；② 编译失败了脚本
+    还若无其事往下跑，框照样弹出但永远顶不上来 —— 使用者看到的就是"点了没反应"。
+    """
+    from webapp import server as S
+
+    src = S._PS_PICK_SCRIPT
+    check("Windows 脚本会抢前台（否则被浏览器压住）",
+          "AttachThreadInput" in src and "SetForegroundWindow" in src)
+    check("Windows 脚本在编译失败时当场终止",
+          "ErrorActionPreference" in src and "'Stop'" in src, src[:80])
+    check("按对话框类名找窗口（FolderBrowserDialog 不暴露 Handle）",
+          '"#32770"' in src and "FindDialog" in src)
+    check("定时重试直到窗口出现", "Timer" in src and "Interval" in src)
+    check("不再把 out 参数错传成 IntPtr",
+          "GetWindowThreadProcessId(GetForegroundWindow(), IntPtr.Zero)" not in src)
+
+    if os.name != "nt":
+        return
+    # 真跑一遍：把 ShowDialog 换掉，只验编译 + 定时器 + 输出三个环节
+    probe = src.replace("$r = $d.ShowDialog($owner)",
+                        "Start-Sleep -Milliseconds 300; $r = 2")
+    state, val = S._pick_powershell(script=probe, timeout=180)
+    check("脚本能在本机编译并跑完（失败会把原因带回来）",
+          state == "cancel", (state, val))
+    if state == "fail":
+        print("      ↳ 原因：%s" % val)
+
 
 def _pick_fallback(check) -> None:
     """目录选择框的降级路径。

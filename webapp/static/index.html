@@ -2984,7 +2984,7 @@ async function storSave(dir) {
 }
 
 async function storPick() {
-  toast("正在打开目录选择框…（在运行平台的这台电脑上）");
+  toast("已在这台电脑上弹选择框…若没看到，看一眼任务栏或按 Alt+Tab");
   try {
     const r = await fetch("/api/storage/pick", {method: "POST"}).then(x => x.json());
     if (!r.ok) {

@@ -1709,12 +1709,72 @@ _PICK_TIMEOUT = 300          # 对话框等人操作的上限（秒）
 
 # PowerShell 侧的选择框脚本。用 -EncodedCommand（UTF-16LE + base64）传，
 # 中文提示语就不经过控制台代码页，避免出现"选择 APK 存储目¼"这类乱码。
-# 隐藏的顶层 owner 窗口是为了让对话框落在最前面 —— 从浏览器点一下，
-# 弹窗跑到浏览器后面的话，使用者会以为没反应。
+#
+# 为什么要做"抢前台"这一套：Windows 有前台锁 —— 浏览器正占着前台时，后台
+# 进程**不允许**把自己的窗口提到最前（SetForegroundWindow 会被静默忽略）。
+# 于是框确实弹了，却压在浏览器底下，使用者以为按钮没反应。
+# 破解办法是标准做法：把当前前台线程与本线程 AttachThreadInput 挂接，
+# 借它的输入队列把窗口顶上去，完事再解挂。窗口句柄从本进程的 #32770
+# （对话框类名）里找 —— FolderBrowserDialog 不对外暴露 Handle。
 _PS_PICK_SCRIPT = r"""
+# 编译失败必须当场终止：不然 [PiiscanTop] 不存在，框照样弹出但永远顶不上来，
+# 使用者看到的现象和"没反应"一模一样（自检当场踩到过：Add-Type 报错后脚本若无其事往下走）。
+$ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+public class PiiscanTop {
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr SetActiveWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool f);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+
+  public static IntPtr FindDialog() {
+    IntPtr found = IntPtr.Zero;
+    uint me = (uint)Process.GetCurrentProcess().Id;
+    EnumWindows(delegate(IntPtr h, IntPtr l) {
+      uint pid; GetWindowThreadProcessId(h, out pid);
+      if (pid == me && IsWindowVisible(h)) {
+        StringBuilder sb = new StringBuilder(64);
+        GetClassName(h, sb, 64);
+        if (sb.ToString() == "#32770") { found = h; return false; }
+      }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
+
+  public static bool Force(IntPtr h) {
+    if (h == IntPtr.Zero) return false;
+    uint fgPid;
+    uint fg = GetWindowThreadProcessId(GetForegroundWindow(), out fgPid);
+    uint me = GetCurrentThreadId();
+    bool at = false;
+    if (fg != me) at = AttachThreadInput(fg, me, true);
+    ShowWindow(h, 5);                        // SW_SHOW
+    SetWindowPos(h, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0040);
+    SetForegroundWindow(h);
+    BringWindowToTop(h);
+    SetActiveWindow(h);
+    if (at) AttachThreadInput(fg, me, false);
+    return true;
+  }
+}
+'@
 $owner = New-Object System.Windows.Forms.Form
 $owner.TopMost = $true
 $owner.ShowInTaskbar = $false
@@ -1726,7 +1786,20 @@ $owner.Show()
 $d = New-Object System.Windows.Forms.FolderBrowserDialog
 $d.Description = '选择 APK 存储目录'
 $d.ShowNewFolderButton = $true
+# 对话框一出现就把它顶到前台；最多重试 3 秒，防止句柄还没建出来。
+# 定时器挂在 UI 线程的消息循环上，ShowDialog 阻塞期间照样会触发。
+$script:tries = 0
+$t = New-Object System.Windows.Forms.Timer
+$t.Interval = 120
+$t.Add_Tick({
+  $script:tries++
+  $h = [PiiscanTop]::FindDialog()
+  if ($h -ne [IntPtr]::Zero) { [void][PiiscanTop]::Force($h); $t.Stop() }
+  elseif ($script:tries -gt 25) { $t.Stop() }
+})
+$t.Start()
 $r = $d.ShowDialog($owner)
+$t.Stop()
 $owner.Close()
 if ($r -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output ('OK=' + $d.SelectedPath) }
 else { Write-Output 'CANCEL' }
