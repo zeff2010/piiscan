@@ -7696,6 +7696,7 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
     no_cand = 0
     last_label = ""
     last_was_exit = False
+    _cached_xml = None       # 点击后抓到的结构树，界面没再变就下一轮直接复用
     log("[*] 1 档探索：在未同意状态下点击界面（上限 %ds / %d 次，绝不点同意）…"
         % (int(span), _PRE_EXPLORE_TAP_CAP))
 
@@ -7735,6 +7736,7 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
                 uiwalk.back(serial)
                 time.sleep(max(0.8, interval * 0.6))
                 state_key = ""
+                _cached_xml = None
                 continue
             # ② 跳到别的应用（浏览器看政策、拉起微信登录）：先 BACK 一次看能不能回来。
             #    直接 respawn 的代价是 5~30 秒重注入，而多数外跳一步 BACK 就回来了。
@@ -7744,6 +7746,7 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
                 fg = uiwalk.foreground(serial)
                 pkg_now = str(fg.get("package") or "").strip()
                 act_now = str(fg.get("activity") or "").strip()
+                _cached_xml = None
                 if pkg_now == package:
                     continue
             # ③ 确实退出了（点了「不同意」/被系统清掉）
@@ -7767,13 +7770,17 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
                         state_key = ""
                         state_taps = 0
                         no_cand = 0
+                        _cached_xml = None
                         continue
                 except Exception as e:
                     log("[!] 1 档探索：重新拉起失败：%s" % e)
             out["why"] = out["why"] or "应用已不在前台，无法继续探索"
             break
 
-        xml = uiwalk.dump_retry(serial, tries=2, wait=0.5)
+        # 上一轮点击后刚 dump 过、且界面没再变动，就直接复用那份结构树。
+        # 一次 dump 在真机上要 2~8 秒，每一步都重抓等于把预算砍掉一半。
+        xml = _cached_xml or uiwalk.dump_retry(serial, tries=2, wait=0.5)
+        _cached_xml = None
         if not xml:
             out["why"] = "结构树连续取不到（设备侧 uiautomator 无响应）"
             break
@@ -7795,6 +7802,7 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
             time.sleep(max(0.8, interval * 0.6))
             state_taps = 0
             state_key = ""
+            _cached_xml = None
             continue
 
         nodes = [n for n in uiwalk.parse_all(xml)
@@ -7819,6 +7827,7 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
             uiwalk.back(serial)
             time.sleep(max(0.8, interval * 0.6))
             state_key = ""
+            _cached_xml = None
             continue
         no_cand = 0
 
@@ -7841,8 +7850,9 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
         seen.add(node.key)
         last_label = label
         last_was_exit = _pre_exit_word(label)
-        # ★ 步骤文字里刻意不写"同意"两个字：报告层要靠这段文字
-        #   切分"同意前/后"，出现"不同意"会把切分点提前。
+        # 步骤文字里必然带「同意」二字（「未同意状态：点击「不同意」」），
+        # 所以判定层**不能**再靠"遇到含同意的步骤就切分"来数探索步数 ——
+        # 那样会把整段探索当成同意动作截掉。判定层改读 `res.pre_explore`。
         res.ui_steps.append("未同意状态：点击「%s」" % label)
         if on_stage:
             try:
@@ -7860,6 +7870,7 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
         after_texts = set(uiwalk.screen_texts(xml2)) if xml2 else set()
         if act_now != str(fg2.get("activity") or "").strip() or before_texts != after_texts:
             idle = 0
+            _cached_xml = xml2      # 界面确实变了：下一轮直接复用这份，省一次 dump
         else:
             idle += 1
             if idle >= _PRE_EXPLORE_IDLE:
