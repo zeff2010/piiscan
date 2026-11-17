@@ -275,10 +275,17 @@ class ScanConfig:
 #                    差集里就凭空少几个 SDK —— 这是最隐蔽的假阴性。
 #   · max_depth      2 档「只点二级」：层级按页面图从入口点了几跳记，0 = 不限。
 #   · login_enabled  1、2 档不做登录（口径是"游客可见"）；3、4 档才尝试登录。
-#   · consent_only   1 档：取到政策正文即收工，不点同意、不遍历。
+#   · consent_only   1 档：不点同意；政策取到之后**继续在未同意状态下点**
+#                    （除了同意，弹窗上的政策链接/设置/关闭、「不同意」「仅浏览」
+#                    之后仍能进的主界面都算），因为只有动起来才会触发 SDK 初始化。
 DEPTH_PROFILES: Dict[str, Dict[str, Any]] = {
     "pre": {
-        "duration": 150, "policy_wait": 45, "ui_tap_interval": 1.4,
+        # ★ 2026-11-17 由 150 → 420：1 档从"取到政策就收工"改成
+        #   "在未同意状态下尽量点多几个界面"。150 秒里政策观测就占 45 秒，
+        #   剩下 100 秒只够点十下左右（每次 dump 要 2~8 秒），
+        #   而那些只在二级界面才初始化的 SDK 一个都碰不到 —— 这正是
+        #   "跑了十几个 App、一个同意前实锤都没有"的直接原因。
+        "duration": 420, "policy_wait": 45, "ui_tap_interval": 1.4,
         "shot_every_taps": 3, "max_shots": 20,
         "max_events_per_hook": 20, "global_event_cap": 4000,
         "repro_duration": 120,
@@ -329,7 +336,7 @@ _DEPTH_ALIASES: Dict[str, str] = {
 
 # 表单/日志里用的档位中文名（一处定义，平台与报告都从这里取）。
 DEPTH_LABELS: Dict[str, str] = {
-    "pre": "1 档 · 仅同意前",
+    "pre": "1 档 · 仅同意前（含未同意状态探索）",
     "light": "2 档 · 同意后浅测（5 分钟 / 不登录 / 二级）",
     "normal": "常规（历史档，约 1.5 分钟）",
     "deep": "3 档 · 深度（15 分钟 / 可登录）",

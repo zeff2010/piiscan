@@ -1574,7 +1574,7 @@ class FlowRunner:
         src = getattr(sc, "consent_source", "") if sc else ""
         act = (src.split(":", 1)[1] if ":" in (src or "") else "") or "同意"
         if _no_consent:
-            steps.append("⑥ 本档位不执行「同意」动作（1 档「仅同意前」：取到政策正文即收工），"
+            steps.append("⑥ 本档位不执行「同意」动作（1 档「仅同意前」：全程保持未同意状态），"
                          "因此本轮没有「同意后」阶段")
         elif cms:
             steps.append("⑥ 点击「%s」（本轮在第 %.1f 秒捕获到该事件），"
@@ -1584,9 +1584,15 @@ class FlowRunner:
 
         # ⑦ 遍历路径 —— 逐条照抄本次实际点击
         ui_steps = [s for s in (getattr(sc, "ui_steps", None) or []) if sc]
-        # 同意那一步已在 ⑥ 里单独写了，留在遍历列表里会让人以为要点两次
-        walked = [s for s in ui_steps
-                  if not str(s).startswith("AI ") and act not in str(s)]
+        if _no_consent:
+            # 1 档没有"同意"那一步可剥，反而**不能**按同意字样过滤：
+            # 探索步骤是「未同意状态：点击「不同意」」，一过滤就整段消失，
+            # ⑦ 会变成空白，等于把这一档实际点过的路径全部隐去。
+            walked = [s for s in ui_steps if not str(s).startswith("AI ")]
+        else:
+            # 同意那一步已在 ⑥ 里单独写了，留在遍历列表里会让人以为要点两次
+            walked = [s for s in ui_steps
+                      if not str(s).startswith("AI ") and act not in str(s)]
         if walked:
             # ★ ui_steps 里带的序号是采集时的原始序号。这里剥掉了「点击同意」
             #   那一步（它已单列在⑥），于是序号跳号（…1. 3. 4.…），而
@@ -1599,7 +1605,9 @@ class FlowRunner:
                     if len(items) > len(shown) else "")
             note = ("（「点击同意」那一步已单列在⑥，此处不重复）"
                     if len(walked) != len(ui_steps) else "")
-            steps.append("⑦ 同意后按本轮实际路径遍历（共 %d 步）%s：%s%s"
+            steps.append(("⑦ 未同意状态下按本轮实际路径探索（共 %d 步）%s：%s%s"
+                          if _no_consent else
+                          "⑦ 同意后按本轮实际路径遍历（共 %d 步）%s：%s%s")
                          % (len(walked), note, seq, tail))
 
         # ⑧ 各问题项的复现要点 —— 只写本次真有证据的
@@ -1859,23 +1867,52 @@ class FlowRunner:
                        "sink_before": sinks["before_consent"],
                        "sink_hosts_before": sinks["before_hosts"]}
         # 人工流程要求「先停一会儿，在不同意的前提下尽量多点各种按钮和链接」。
-        # 采集器目前只做静置观察，没有在未同意状态下主动探索 —— 这个缺口必须
-        # 显式写出来，不能默认"已完成"。否则复核的人会以为同意前的行为已经被
-        # 充分触发过，从而低估漏报风险。
-        pre_steps = []
-        for s in (getattr(self.scan, "ui_steps", None) or []):
-            if "同意" in str(s):
-                break
-            pre_steps.append(s)
-        explored = len(pre_steps) >= 2
+        # 采集侧从 2026-11-17 起真的会点了（见 collector._explore_pre_consent），
+        # 但"点了几屏"必须如实写出来：没点到的话，同意前结论仍属"静置观察"，
+        # 报告不能让复核的人以为行为已被充分触发。
+        #
+        # ★ 判据用结构化字段 `pre_explore`，不再从 `ui_steps` 文本里切：
+        #   原文写法是"遇到含『同意』的步骤就停"，而探索的步骤文字是
+        #   「未同意状态：点击「不同意」」—— 本身就含「同意」二字，
+        #   一匹配就把整段探索当成同意动作截掉了，探索反而被判成没做。
+        _pe = getattr(self.scan, "pre_explore", None) or {}
+        _pe_taps = int(_pe.get("taps") or 0)
+        _pe_screens = int(_pe.get("screens") or 0)
+        if _pe:
+            # 1 档：探索有没有真发生，以采集侧记的结构化结果为准
+            explored = _pe_taps > 0
+            _explore_desc = (("未同意状态下交互探索（点击 %d 次、经过 %d 屏）"
+                              % (_pe_taps, _pe_screens)) if explored
+                             else "未同意状态下静置观察（未点到界面元素：%s）"
+                                  % (_pe.get("why") or "原因未记录"))
+        else:
+            # 2~4 档没有"未同意探索"这个阶段，沿用原判定：同意之前的遍历步数。
+            # （这一支不能删：2~4 档的 PASS/NOT_TESTED 全靠它。）
+            pre_steps = []
+            for s in (getattr(self.scan, "ui_steps", None) or []):
+                if "同意" in str(s):
+                    break
+                pre_steps.append(s)
+            explored = len(pre_steps) >= 2
+            _explore_desc = ("%d 步" % len(pre_steps)) if explored else ""
         pr.steps = ["冷启动并注入",
-                    "未同意状态下交互探索" if explored else "未同意状态下静置观察（未做交互探索）",
+                    _explore_desc or "未同意状态下静置观察（未做交互探索）",
                     "记录同意前行为"]
         if not explored:
             pr.warnings.append(
-                "本次未在未同意状态下执行主动交互探索（采集器当前仅静置观察），"
-                "同意前的收集行为可能未被充分触发，结论偏保守")
+                "本次未在未同意状态下执行主动交互探索（%s），"
+                "同意前的收集行为可能未被充分触发，结论偏保守"
+                % (_pe.get("why") or "采集器未进入探索阶段"))
             self.log("[流程]    ⚠ 未执行未同意状态下的交互探索，同意前结论基于静置观察")
+        else:
+            _rx = _pe.get("refused_exit") or []
+            if _rx:
+                pr.warnings.append(
+                    "未同意状态下点击「%s」后应用退出，此后无法在未同意状态继续操作；"
+                    "该行为本身已计入事实表（未同意即不可用）"
+                    % "、".join(str(r.get("label") or "") for r in _rx[:3]))
+            self.log("[流程]    未同意探索：点击 %d 次、经过 %d 屏（%s）"
+                     % (_pe_taps, _pe_screens, _pe.get("why") or ""))
 
         self.log("[流程]    同意前事件 %d 条：采集类 %d 种类型，外发 %d 次（%d 个地址）"
                  % (len(pre), len(collected), sinks["before_consent"],
@@ -2086,13 +2123,12 @@ class FlowRunner:
             #   会照着"未发现问题"的结论签字。做了主动探索的轮次才判 pass。
             if explored:
                 self._set("Q002", PASS, phase="P1", confidence="确证",
-                          desc="冷启动至用户同意隐私政策期间，在已执行的 %d 步未同意"
-                               "状态交互探索中，均未观测到个人信息收集行为"
-                               % len(pre_steps),
-                          evidence=[Evidence("frida", "同意前事件 0 条（主动探索 %d 步）"
-                                             % len(pre_steps), "", "P1")],
+                          desc="冷启动至用户同意隐私政策期间，在已执行的%s中，"
+                               "均未观测到个人信息收集行为" % _explore_desc,
+                          evidence=[Evidence("frida", "同意前事件 0 条（%s）"
+                                             % _explore_desc, "", "P1")],
                           facts=[["同意前事件数", "0 条"],
-                                 ["未同意状态交互探索", "%d 步" % len(pre_steps)],
+                                 ["未同意状态交互探索", _explore_desc],
                                  ["结论边界", "仅覆盖本轮已触发的界面，未触发的路径不在结论范围内"]])
             else:
                 # ★ 措辞必须和存档对得上（自设捏脸第 4 轮教训）：
@@ -2103,14 +2139,25 @@ class FlowRunner:
                 _n_all = len(pre) + len(edge_pre)
                 if _absent:
                     # 1 档：本轮没有同意动作，谈不上"同意之前/之后"，只有"未同意状态"。
-                    _nt_reason = ("本轮未执行「同意」动作（全程处于未同意状态），"
-                                  "共观测到 %d 条行为事件，但没有一条取到有效个人信息取值，"
-                                  "也未观测到外发，证据等级不足以认定「已收集」，"
-                                  "同样不足以认定「未收集」；此外本档位不做界面交互探索，"
-                                  "未触发的界面路径不在结论范围内。"
-                                  "如需认定，应在未同意状态下主动遍历后复测"
-                                  % _n_all)
-                    _nt_scope = "0 步（本档位仅静置观察，不点同意、不遍历）"
+                    if explored:
+                        _nt_reason = ("本轮未执行「同意」动作（全程处于未同意状态），"
+                                      "在%s的过程中共观测到 %d 条行为事件，"
+                                      "但没有一条取到有效个人信息取值，也未观测到外发，"
+                                      "证据等级不足以认定「已收集」，"
+                                      "同样不足以认定「未收集」；"
+                                      "未触发的界面路径不在结论范围内。"
+                                      "如需认定，应扩大未同意状态下的探索范围后复测"
+                                      % (_explore_desc, _n_all))
+                        _nt_scope = _explore_desc
+                    else:
+                        _nt_reason = ("本轮未执行「同意」动作（全程处于未同意状态），"
+                                      "共观测到 %d 条行为事件，但没有一条取到有效个人信息取值，"
+                                      "也未观测到外发，证据等级不足以认定「已收集」，"
+                                      "同样不足以认定「未收集」；此外本轮未能在未同意状态下"
+                                      "点击界面（%s），未触发的界面路径不在结论范围内。"
+                                      "如需认定，应在未同意状态下主动遍历后复测"
+                                      % (_n_all, _pe.get("why") or "未进入探索阶段"))
+                        _nt_scope = "0 步（未能点到界面元素）"
                     _nt_facts = [["未同意状态事件数", "%d 条" % _n_all],
                                  ["同意动作", "本轮未执行（1 档「仅同意前」口径）"]]
                 elif _cms:

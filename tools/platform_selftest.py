@@ -484,6 +484,19 @@ def t_consent_tier():
     CT.run(check)
 
 
+def t_pre_explore():
+    """1 档「未同意状态探索」的闸门与判定（离线）。
+
+    1 档原来从不点任何元素，静置在隐私弹窗上，整改后的 App 一个标识符都不读 ——
+    "同意前收集"因此永远判不出来（使用者 2026-11-17 质疑）。
+    这里守的是：同意类绝不点、拒绝类要能点、注销/支付不能点、
+    探索结果要进判定层（而不是被"同意"二字把步骤切没）。
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import _pre_explore_tests as PE
+    PE.run(check)
+
+
 def t_apk_store():
     """APK 共享存储：按内容去重、删任务按引用清理（离线）。
 
@@ -949,6 +962,7 @@ def main() -> int:
     t_db_batch_delete()
     t_apk_store()
     t_consent_tier()
+    t_pre_explore()
     t_stack_attribution()
     t_no_device_mode()
     t_queue_order()

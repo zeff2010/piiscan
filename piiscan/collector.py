@@ -375,6 +375,15 @@ class ScanResult:
     ui_path: List[Dict[str, Any]] = field(default_factory=list)
     # 复现轮的回放结果摘要（首轮为空）
     ui_replay: Dict[str, Any] = field(default_factory=dict)
+    # 1 档「未同意状态探索」的结果摘要（其他档位为空）
+    #   {"taps":12, "screens":5, "visited":[...], "refused_exit":[{...}],
+    #    "budget":240.0, "why":""}
+    # ★ 为什么单独记一个字段、而不是去 ui_steps 里数：
+    #   ui_steps 是给人看的字符串，判定"有没有探索过"要靠文本匹配
+    #   （原来的写法是找"同意"二字之前的步数）。可"点击「不同意」"里
+    #   就带"同意"两个字，一匹配就被当成同意动作截断 —— 探索记录反而
+    #   把探索判成没做。结构化字段没有这个问题。
+    pre_explore: Dict[str, Any] = field(default_factory=dict)
     locked_at_start: bool = False
     # 新增：界面序列 / 政策捕获 / 网络去向 / SDK / 安装情况
     screens: List[Dict[str, Any]] = field(default_factory=list)
@@ -5863,20 +5872,21 @@ def _probe_first_launch(res: ScanResult, script, serial: str, log: Callable[[str
             _pcg = cap.get("preConsentGrab") or {}
             if _bt >= INLINE_POLICY_MIN:
                 cap["notes"].append(
-                    "1 档（仅同意前）：政策正文已取得（%d 字），按要求**未点击同意**，"
-                    "采集到此收工。本轮所有事件都属于「同意前」，不涉及同意后的行为。" % _bt)
-                log("[*] 1 档：已取得政策正文 %d 字，按要求不点同意，首启观测阶段收工" % _bt)
+                    "1 档（仅同意前）：政策正文已取得（%d 字），**未点击同意**；"
+                    "首启观测阶段到此结束，随后在未同意状态下继续点击界面，"
+                    "以触发只在特定界面才初始化的采集行为。" % _bt)
+                log("[*] 1 档：已取得政策正文 %d 字，不点同意，转入未同意探索" % _bt)
             elif _pcg.get("opened"):
                 cap["notes"].append(
                     "1 档（仅同意前）：政策入口已点开（%s），但正文未能读取；"
-                    "按要求**未点击同意**，采集到此收工。"
+                    "**未点击同意**，转入未同意状态探索。"
                     % (_pcg.get("focusAfter") or "政策页"))
-                log("[!] 1 档：政策页已打开但正文读不到（0 字），按要求不点同意，收工")
+                log("[!] 1 档：政策页已打开但正文读不到（0 字），不点同意，转入未同意探索")
             else:
                 cap["notes"].append(
-                    "1 档（仅同意前）：未定位到可打开的政策入口，按要求**未点击同意**，"
-                    "采集到此收工。结构树看不见的超链接需人工复核。")
-                log("[!] 1 档：未定位到政策入口，按要求不点同意，收工")
+                    "1 档（仅同意前）：未定位到可打开的政策入口，**未点击同意**；"
+                    "转入未同意状态探索。结构树看不见的超链接需人工复核。")
+                log("[!] 1 档：未定位到政策入口，不点同意，转入未同意探索")
             break
         if rounds >= 8 and not consent_done and not has_policy_word:
             res.popup_evidence.append("首启 %ds 内未发现隐私政策提示，也未发现同意按钮"
@@ -7573,6 +7583,308 @@ def _landing(res: ScanResult, cfg, live, deadline: float,
             on_stage("首启着陆完成", 54)
         except Exception:
             pass
+    return out
+
+
+# ---------------------------------------------------------------- 1 档：未同意状态探索
+#
+# ★ 2026-11-17 使用者提出：「跑了十几个 App 的 1 档，一个同意前的实锤都没有，
+#   比例上说不通；以前用 4 档还能测出来。」
+#   查证结果不是判定错，而是**这一档从来没有点过任何东西**：16 轮 1 档的
+#   `ui_steps` 全部 ≤1，全程静置在隐私弹窗上。合规整改之后 App 普遍把 SDK
+#   初始化推迟到同意之后，静置自然一个标识符都读不到 —— 一项都判不出来，
+#   不是因为"这些 App 都干净"，而是因为"我们没让它动"。
+#
+# 这一档的口径本来就该是「同意之前的所有界面都可以探索」：
+#   · 弹窗上的政策链接、设置、关闭 —— 点了仍然在未同意状态；
+#   · 「不同意 / 仅浏览 / 游客模式 / 跳过」之后的界面 —— 只要没同意，
+#     主界面里的每一次读取同样发生在同意之前，而且这里恰恰是 SDK 初始化的地方。
+# 所以这里比主遍历**多允许**点「不同意」「拒绝」「跳过」这类按钮：它们不会让
+# 同意发生，反而是进入"未同意可用界面"的唯一入口（主遍历禁点它们，是因为
+# 主遍历已在同意之后，点一下只会让 App 退出、白掉一轮）。
+#
+# 三条硬红线（任何一条被触碰，这一档的结论就作废）：
+#   ① 同意类标签一律不点 —— `_consent_label_kind(in_policy_dialog=True)` 返回
+#      非空即跳过。注意弹窗上的「确定 / 接受 / 继续」也算同意：在政策告知框上
+#      点确定，就是对这段告知的接受。
+#   ② 账号销毁类不点 —— 点下去账号没了，对"同意前收集"这个话题零信息量。
+#   ③ 系统权限弹窗整屏不动 —— 点「允许」等于替用户授权，点「拒绝」等于替
+#      用户拒绝，两者都会改写被测状态，测出来的就不再是"App 原本的行为"。
+_PRE_EXPLORE_STATE_TAPS = 8      # 同一个界面最多点几个元素
+_PRE_EXPLORE_IDLE = 3            # 连续几次点击界面无变化就退一层
+_PRE_EXPLORE_TAP_CAP = 90        # 单轮总点击数上限（防某页面无限刷新）
+
+# 能把"弹窗挡住的主界面"解锁出来的按钮：优先点它们，否则在一个模态弹窗上
+# 点二十个背景元素也全是空转。
+_PRE_EXIT_WORDS = ("不同意", "拒绝", "暂不", "仅浏览", "游客", "跳过",
+                   "以后再说", "残忍", "放弃", "关闭", "不开启", "先逛逛")
+
+# 1 档探索**额外**要拦的一批 —— 它们不是"同意"，但点了会造成不可逆后果，
+# 而对这些后果，"同意前收集了什么"这个问题一点信息都换不回来：
+#   · 账号销毁 / 关系解除：注销、退出登录、解绑，做了一次就没有第二次；
+#   · 真实交易：点「立即支付」会真的下单扣款（被测 App 是真实环境）；
+#   · 产生费用的系统动作：拨号、发短信；
+#   · 直接退出应用：点了只是白掉一次 respawn，纯亏。
+# 用**短语**而不是单词："支付"会误伤「支付设置」这种无害入口，
+# "立即支付 / 确认支付"才是真的会扣钱的那一下。
+_PRE_FORBID_WORDS = (
+    "注销", "删除账号", "退出登录", "解绑", "解除绑定", "确认卸载",
+    "立即支付", "确认支付", "去支付", "提交订单", "确认下单",
+    "立即购买", "确认购买", "立即充值", "确认充值", "开通会员", "立即开通",
+    "拨号", "呼叫", "发送短信", "发短信",
+    "退出应用", "退出程序", "关闭应用",
+)
+
+
+def _pre_exit_word(label: str) -> bool:
+    t = (label or "").strip()
+    return bool(t) and any(w in t for w in _PRE_EXIT_WORDS)
+
+
+def _pre_may_tap(label: str) -> bool:
+    """1 档探索：这个标签能不能点。
+
+    与主遍历的 `uiwalk.is_dangerous` 是两套口径，不能混用：
+    主遍历禁「不同意/拒绝/跳过」，是因为它已在同意之后，点这些只会让 App
+    退出；这一档本来就没同意，点它们正是进入未同意可用界面的唯一入口。
+    """
+    t = (label or "").strip()
+    if not t:
+        return False
+    # ① 同意类：一律按"这张屏幕是政策告知框"从严判定。
+    #    在告知框上，「确定 / 接受 / 继续 / 允许」都等于同意，所以整类跳过。
+    kind, _why = _consent_label_kind(t, in_policy_dialog=True)
+    if kind:
+        return False
+    # ② 不可逆 / 会花钱的动作（见 _PRE_FORBID_WORDS）
+    for kw in _PRE_FORBID_WORDS:
+        if kw in t:
+            return False
+    # ③ 二次确认型销毁动作
+    for kw in uiwalk.DANGEROUS_CONFIRM_LABELS:
+        if kw in t:
+            return False
+    return True
+
+
+def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
+                         log: Callable[[str], None], *, respawn=None,
+                         should_stop: Optional[Callable[[], bool]] = None,
+                         on_stage: Optional[Callable[[str, int], None]] = None
+                         ) -> Dict[str, Any]:
+    """1 档：在**未同意**状态下尽量多点几个界面（绝不点同意）。
+
+    返回值同时写进 `res.pre_explore`：报告要能回答"这一轮到底点了几屏、
+    卡在哪一步"，否则"没发现问题"和"没测"在纸面上长得一模一样。
+    """
+    serial = res.device_serial
+    package = cfg.scan.package
+    interval = max(0.4, float(getattr(cfg.scan, "ui_tap_interval", 1.4)))
+    t0 = time.time()
+    span = max(1.0, deadline - t0)
+    out: Dict[str, Any] = {
+        "taps": 0, "screens": 0, "visited": [], "refused_exit": [],
+        "skipped_consent": 0, "perm_dialogs": 0, "budget": round(span, 1), "why": "",
+    }
+    # 先落盘再干活：中途异常中断时，报告仍能看到"点过几屏"，
+    # 而不是因为异常回滚成"没探索"。
+    res.pre_explore = out
+    seen: set = set()
+    idle = 0
+    state_taps = 0
+    state_key = ""
+    no_cand = 0
+    last_label = ""
+    last_was_exit = False
+    log("[*] 1 档探索：在未同意状态下点击界面（上限 %ds / %d 次，绝不点同意）…"
+        % (int(span), _PRE_EXPLORE_TAP_CAP))
+
+    while time.time() < deadline:
+        if should_stop and should_stop():
+            out["why"] = "收到停止请求"
+            break
+        # ★ 硬断言：同意一旦被登记，这一档的口径就作废了。宁可停在这里，
+        #   也不能把"同意后"的行为记成"同意前"——那是把违规洗白的方向。
+        if getattr(res, "consent_given", False):
+            out["why"] = "检测到已登记同意动作，立即中止"
+            res.errors.append(
+                "1 档探索途中检测到「同意」动作已被登记，已立即中止探索；"
+                "本轮不能作为「同意前」的证据使用")
+            log("[!] 1 档探索：检测到同意动作已登记，立即中止")
+            break
+        if out["taps"] >= _PRE_EXPLORE_TAP_CAP:
+            out["why"] = "达到单轮点击数上限 %d" % _PRE_EXPLORE_TAP_CAP
+            break
+
+        fg = uiwalk.foreground(serial)
+        pkg_now = str(fg.get("package") or "").strip()
+        act_now = str(fg.get("activity") or "").strip()
+
+        # ---- 前台不在被测应用上 ----
+        if pkg_now and pkg_now != package:
+            # ① 系统权限弹窗：**整屏不点**。点「允许」等于替用户授权，
+            #    点「拒绝」等于替用户拒绝 —— 两者都会改写被测状态，之后
+            #    测到的就不再是"App 原本的行为"。直接退掉，只记一笔事实。
+            #    这里也绝不能当成"App 退出"去 respawn：弹窗一出现就重启，
+            #    一轮下来什么都测不到。
+            if any(pkg_now == p or pkg_now.startswith(p + ".")
+                   for p in uiwalk.PERM_PACKAGES):
+                out["perm_dialogs"] = int(out.get("perm_dialogs") or 0) + 1
+                log("[*] 1 档探索：出现系统权限弹窗（%s），按 BACK 关闭、不代为作答"
+                    % pkg_now)
+                uiwalk.back(serial)
+                time.sleep(max(0.8, interval * 0.6))
+                state_key = ""
+                continue
+            # ② 跳到别的应用（浏览器看政策、拉起微信登录）：先 BACK 一次看能不能回来。
+            #    直接 respawn 的代价是 5~30 秒重注入，而多数外跳一步 BACK 就回来了。
+            if not uiwalk.is_launcher_pkg(pkg_now):
+                uiwalk.back(serial)
+                time.sleep(max(0.8, interval * 0.6))
+                fg = uiwalk.foreground(serial)
+                pkg_now = str(fg.get("package") or "").strip()
+                act_now = str(fg.get("activity") or "").strip()
+                if pkg_now == package:
+                    continue
+            # ③ 确实退出了（点了「不同意」/被系统清掉）
+            if last_was_exit and last_label:
+                out["refused_exit"].append({"label": last_label, "pkg_after": pkg_now})
+                # 这条本身就是一个可复核的事实：未同意时该应用不给用。
+                # 报告里要能看到"点了哪个按钮之后退到了哪"，否则这一整轮
+                # 就只剩一句"没采到"。
+                res.ui_steps.append(
+                    "未同意状态：点击「%s」后应用退出（前台 %s）"
+                    % (last_label[:20], pkg_now))
+                log("[*] 1 档探索：点「%s」后应用退出（前台 %s）"
+                    % (last_label[:20], pkg_now))
+                out["why"] = "点击「%s」后应用退出" % last_label[:20]
+                last_was_exit = False
+                last_label = ""
+            if callable(respawn):
+                try:
+                    if respawn():
+                        time.sleep(max(2.0, interval))
+                        state_key = ""
+                        state_taps = 0
+                        no_cand = 0
+                        continue
+                except Exception as e:
+                    log("[!] 1 档探索：重新拉起失败：%s" % e)
+            out["why"] = out["why"] or "应用已不在前台，无法继续探索"
+            break
+
+        xml = uiwalk.dump_retry(serial, tries=2, wait=0.5)
+        if not xml:
+            out["why"] = "结构树连续取不到（设备侧 uiautomator 无响应）"
+            break
+
+        # 换屏了才记一屏、才拍一张图（1 档总共 20 张配额）
+        fkey = uiwalk.focus_key(act_now) if act_now else ""
+        if fkey and fkey != state_key:
+            state_key = fkey
+            state_taps = 0
+            out["screens"] += 1
+            _lam = act_now.split(".")[-1] if act_now else "未知界面"
+            if _lam not in out["visited"]:
+                out["visited"].append(_lam)
+            observe_screen(res, "未同意探索：%s" % _lam, serial, xml=xml)
+            log("[*] 1 档探索：进入「%s」（第 %d 屏）" % (_lam, out["screens"]))
+
+        if state_taps >= _PRE_EXPLORE_STATE_TAPS:
+            uiwalk.back(serial)
+            time.sleep(max(0.8, interval * 0.6))
+            state_taps = 0
+            state_key = ""
+            continue
+
+        nodes = [n for n in uiwalk.parse_all(xml)
+                 if n.clickable and n.enabled and not uiwalk.is_no_use(n)]
+        cands = []
+        for n in nodes:
+            lab = (n.label or "").strip()
+            if not lab or n.key in seen:
+                continue
+            if not _pre_may_tap(lab):
+                # 同意类：记一笔就永久跳过，绝不因为"这一屏别的都点过了"再回来点它
+                out["skipped_consent"] += 1
+                seen.add(n.key)
+                continue
+            cands.append(n)
+
+        if not cands:
+            no_cand += 1
+            if no_cand >= 2:
+                out["why"] = out["why"] or "当前界面没有未点过的可点元素"
+                break
+            uiwalk.back(serial)
+            time.sleep(max(0.8, interval * 0.6))
+            state_key = ""
+            continue
+        no_cand = 0
+
+        # 解锁类按钮优先：模态弹窗上点背景元素全是空转
+        cands.sort(key=lambda n: (0 if _pre_exit_word(n.label) else 1,
+                                  len((n.label or "").strip())))
+        node = cands[0]
+        label = (node.label or "").strip()[:20]
+        before_texts = set(uiwalk.screen_texts(xml))
+
+        try:
+            uiwalk.tap(serial, *node.center)
+        except Exception as e:
+            log("[!] 1 档探索：点击「%s」失败：%s" % (label, e))
+            seen.add(node.key)
+            continue
+        res.ui_taps += 1
+        out["taps"] += 1
+        state_taps += 1
+        seen.add(node.key)
+        last_label = label
+        last_was_exit = _pre_exit_word(label)
+        # ★ 步骤文字里刻意不写"同意"两个字：报告层要靠这段文字
+        #   切分"同意前/后"，出现"不同意"会把切分点提前。
+        res.ui_steps.append("未同意状态：点击「%s」" % label)
+        if on_stage:
+            try:
+                on_stage("未同意探索", min(84, 58 + int(24 * min(1.0, (time.time() - t0) / span))))
+            except Exception:
+                pass
+        time.sleep(interval)
+
+        # ---- 这一下有没有效果 ----
+        fg2 = uiwalk.foreground(serial)
+        pkg2 = str(fg2.get("package") or "").strip()
+        if pkg2 and pkg2 != package:
+            continue            # 退出到别的应用，回到循环开头处理
+        xml2 = uiwalk.dump_retry(serial, tries=1, wait=0.3)
+        after_texts = set(uiwalk.screen_texts(xml2)) if xml2 else set()
+        if act_now != str(fg2.get("activity") or "").strip() or before_texts != after_texts:
+            idle = 0
+        else:
+            idle += 1
+            if idle >= _PRE_EXPLORE_IDLE:
+                uiwalk.back(serial)
+                time.sleep(max(0.8, interval * 0.6))
+                idle = 0
+                state_key = ""
+                state_taps = 0
+
+    out["seconds"] = round(time.time() - t0, 1)
+    if not out["why"]:
+        out["why"] = "时间用尽" if time.time() >= deadline else "已结束"
+    log("[*] 1 档探索结束：点击 %d 次、经过 %d 屏、跳过同意类 %d 个（%s）"
+        % (out["taps"], out["screens"], out["skipped_consent"], out["why"]))
+    # 日志里点了几屏这件事必须同时在界面上可见：否则"这一档到底测了什么"
+    # 只能靠翻 result.json 猜。
+    if out["taps"]:
+        res.errors.append(
+            "1 档（仅同意前）：在未同意状态下点击 %d 次、经过 %d 屏（%s）；"
+            "全程未点击同意，本轮所有事件均属同意前"
+            % (out["taps"], out["screens"], out["why"]))
+    else:
+        res.errors.append(
+            "1 档（仅同意前）：未能在未同意状态下点到任何界面元素（%s）；"
+            "同意前的收集行为可能未被触发，结论偏保守" % out["why"])
     return out
 
 
@@ -12070,11 +12382,26 @@ def run_scan(cfg, log: Callable[[str], None] = print, *,
             res.errors.append("应用无法稳定启动，跳过 UI 遍历：%s"
                               % ((res.app_start_probe or {}).get("why") or ""))
         elif _consent_only:
-            # 1 档：口径是"同意之前"。这里继续遍历就必须先点同意，
-            # 而同意是不可撤销的（App 会记住状态），等于把这一档测废。
-            log("[*] 1 档（仅同意前）：按要求不做同意后的功能遍历，跳过主遍历阶段")
-            res.errors.append("1 档（仅同意前）：按要求未点击同意、不做功能遍历；"
-                              "本轮结论只覆盖隐私弹窗出现到同意之前的行为")
+            # 1 档：口径是"同意之前"。这一档不能走主遍历（主遍历会在着陆阶段
+            # 点同意），但**必须动起来** —— 静置在弹窗上，整改后的 App
+            # 一个标识符都不读，于是"同意前收集"永远判不出来。
+            # 探索的点击闸门在 `_explore_pre_consent` 里，只放行非同意元素。
+            if res.locked_at_start:
+                res.errors.append("设备锁屏，1 档未同意探索未能执行")
+            elif time.time() >= deadline:
+                res.errors.append("采集预算已用尽，1 档未同意探索未能执行")
+            else:
+                log("[*] 1 档（仅同意前）：进入未同意状态探索（不点同意）")
+                stage("未同意探索", 55)
+                try:
+                    _explore_pre_consent(
+                        res, cfg, live, deadline, log,
+                        respawn=respawn, should_stop=should_stop,
+                        on_stage=stage)
+                except Exception as e:
+                    res.errors.append("1 档未同意探索异常：%s" % e)
+                    log("[!] 1 档未同意探索异常：%s" % e)
+                stage("未同意探索完成", 88)
         elif cfg.scan.ui_walk and not res.locked_at_start and time.time() < deadline:
             remain = int(max(1, deadline - time.time()))
             if _path:
