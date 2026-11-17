@@ -615,6 +615,12 @@ class FlowResult:
     depth: str = ""
     budget_seconds: int = 0
     scan_elapsed: int = 0
+    # ---- 1 档「未同意状态探索」的实况（2026-11-17）----
+    # 结构见 collector.ScanResult.pre_explore（taps/screens/refused_exit/
+    # escapes/respawns/why）。必须进 flow.json：简版报告是使用者最先看的那份，
+    # 里面若不写"这一轮到底点了几次、卡在哪"，"未发现问题"和"没测"在纸面上
+    # 就还是一句话——这正是使用者质疑"跑了十几个 App 一个实锤都没有"的由来。
+    pre_explore: Dict[str, Any] = field(default_factory=dict)
     # ---- 旁路取证（注入被加固拦死时的系统侧补证）----
     # 结构见 piiscan/bypass.py:collect()。报告里必须写清它的边界：
     # 只能证明"用过"，给不出调用栈、无法归因 —— 只能算"待人工确认"，不能当认定依据。
@@ -747,6 +753,7 @@ class FlowResult:
             "policy_side_texts": self.policy_side_texts,
             "device_identities": self.device_identities,
             "depth": self.depth, "budget_seconds": self.budget_seconds,
+            "pre_explore": self.pre_explore,
             "scan_elapsed": self.scan_elapsed,
             "bypass": self.bypass,
             # 本次读到的各类声明文档（隐私政策 / 用户协议 / 清单…，带全文）。

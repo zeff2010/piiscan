@@ -39,9 +39,10 @@ _TPL = Path(__file__).with_name("sop_template.html")
 # 老任务目录里的文件不会自动更新，而口径改过（2026-10-26 去掉"简版"字样、
 # 补静态档案与调用栈；2026-10-29 v4 政策一节改为"正文在手就给全文"，
 # 不再只认安装包内路径；v5 跳过未测项不再贴阶段兜底截图；v6 跳过未测项
-# 整段不贴图）之后，
+# 整段不贴图；v7 结论区加一行「本轮检测范围」，写明未同意状态下点了几次、
+# 经过几屏、是否因「拒绝」退出）之后，
 # 旧文件必须重出，否则用户点下载拿到的还是旧版本。
-BRIEF_VERSION = "6"
+BRIEF_VERSION = "7"
 BRIEF_MARKER = "<!-- piiscan-brief:%s -->" % BRIEF_VERSION
 
 # 要剔除的四类内容（都属于"怎么得到的 / 依据什么判"，属于内部底稿）：
@@ -457,6 +458,45 @@ def _item_card(row: Dict[str, Any], shot_map: Dict[int, Dict[str, Any]],
 _CN = ["一", "二", "三", "四", "五", "六"]
 
 
+def _scope_line(data: Dict[str, Any]) -> str:
+    """一行写清「这一轮到底做了什么」。
+
+    ★ 2026-11-17 使用者质疑："跑了十几个 App 的 1 档，一个同意前实锤都没有"。
+      查下来，报告里既没写这一档点了几次、也没写"点了「拒绝使用」就退回桌面"——
+      复核的人只看到"跳过未测"，无法判断是 App 干净、还是我们压根没测到。
+      所以简版（对外那份）也要有这一行：它不谈合规结论，只交代检测动作。
+    """
+    pe = data.get("pre_explore") or {}
+    depth = str(data.get("depth") or "")
+    label = {"pre": "1 档（仅同意前）", "light": "2 档", "deep": "3 档",
+             "extreme": "4 档", "normal": "自定义"}.get(depth, "")
+    bits: List[str] = []
+    if label:
+        bits.append("检测档位：%s" % label)
+    if pe:
+        taps = int(pe.get("taps") or 0)
+        screens = int(pe.get("screens") or 0)
+        if taps:
+            bits.append("未同意状态下点击 %d 次、经过 %d 屏" % (taps, screens))
+        else:
+            bits.append("未同意状态下未执行界面点击（%s）"
+                        % (pe.get("why") or "原因未记录"))
+        rx = pe.get("refused_exit") or []
+        if rx:
+            names = "、".join("「%s」" % str(r.get("label") or "") for r in rx[:3])
+            bits.append("点击%s后应用退回桌面，未同意状态下没有第二个可用界面"
+                        % names)
+        rs = int(pe.get("respawns") or 0)
+        if rs:
+            bits.append("期间重新拉起 %d 次" % rs)
+        esc = int(pe.get("escapes") or 0)
+        if esc:
+            bits.append("有 %d 次界面已不属于被测应用（已退回、不计入触发）" % esc)
+    if not bits:
+        return ""
+    return "".join(["<p class='muted'>本轮检测范围：", _esc("；".join(bits)), "。</p>"])
+
+
 def render_brief(data: Dict[str, Any], *, app_name: str = "", version: str = "",
                  source_market: str = "", operator: str = "",
                  published_at: str = "", date: Any = "") -> str:
@@ -573,6 +613,7 @@ def render_brief(data: Dict[str, Any], *, app_name: str = "", version: str = "",
 %(policy)s
 <h2 class="sec">检测结论</h2>
 <p class="lead">%(summary)s</p>
+%(scope)s
 %(items)s
 </div></div>
 </body>
@@ -586,6 +627,7 @@ def render_brief(data: Dict[str, Any], *, app_name: str = "", version: str = "",
         "static": _static_html(static),
         "policy": policy_html,
         "summary": _esc(summary),
+        "scope": _scope_line(data),
         "items": "".join(parts),
     }
 

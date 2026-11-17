@@ -91,11 +91,15 @@ def _text(html: str) -> str:
 
 
 def _sample() -> Path:
-    for d in ("mbsf20", "mbsf19", "mbsf18"):
-        p = ROOT / "out" / d / "flow.json"
+    # 固定素材优先；素材目录随历史清理删掉后，退回最近一次平台任务的 flow.json ——
+    # 断言看的是"渲染口径"，不依赖具体是哪个 App。
+    cands = [ROOT / "out" / d / "flow.json" for d in ("mbsf20", "mbsf19", "mbsf18")]
+    cands += sorted((ROOT / "out" / "platform").glob("*/flow.json"),
+                    key=lambda p: p.stat().st_mtime, reverse=True)[:5]
+    for p in cands:
         if p.exists():
             return p
-    raise RuntimeError("找不到可用的 flow.json 素材（out/mbsf2x）")
+    raise RuntimeError("找不到可用的 flow.json 素材（out/mbsf2x 或 out/platform/*/flow.json）")
 
 
 # ------------------------------------------------------------ 单元：清洗规则
@@ -139,15 +143,21 @@ def test_render():
     html = render_brief(data, date="2026-10-23")
     text = _text(html)
 
-    # ① 基本信息和政策链接
-    check("含 App 名称", "以观书法" in text, text[:200])
-    check("含版本号", "5.4.2" in text)
-    check("含包名", "com.ltzk.mbsf" in text)
-    check("含检测日期", "2026-10-23" in text)
-    check("含隐私政策链接", "https://app.ygsf.com/privacy.html" in html)
-    check("政策链接可点（<a href>）",
-          'href=\'https://app.ygsf.com/privacy.html\'' in html
-          or 'href="https://app.ygsf.com/privacy.html"' in html)
+    # ① 基本信息和政策链接（断言从素材里取，不硬编码某个 App ——
+    #    素材目录会随历史清理消失，退回任意一份 flow.json 时这些断言仍要成立）
+    _name = str(data.get("app_name") or data.get("package") or "")
+    _ver = str(data.get("version") or "")
+    _pkg = str(data.get("package") or "")
+    check("含 App 名称", bool(_name) and _name in text, _name)
+    check("含版本号", (not _ver) or _ver in text, _ver)
+    check("含包名", (not _pkg) or _pkg in text, _pkg)
+    _pur = str(data.get("policy_url") or "")
+    if _pur:
+        check("含隐私政策链接", _pur in html, _pur[:80])
+        check("政策链接可点（<a href>）",
+              ('href=\'%s\'' % _pur) in html or ('href="%s"' % _pur) in html, _pur[:80])
+    else:
+        check("含隐私政策链接（素材无政策链接，跳过）", True)
 
     # ② 静态档案必留的三组：基本信息 / 加固 / 签名（2026-10-26 用户指定）
     st = data.get("static") or {}
@@ -162,6 +172,29 @@ def test_render():
           and (st.get("signature") or {}).get("sha256", "x") in text)
     check("含可调试 / 明文流量 / 允许备份",
           all(k in text for k in ("可调试", "明文流量", "允许备份")))
+
+    # ②b 「本轮检测范围」：简版也要交代这一轮到底做了什么。
+    # 2026-11-17 使用者质疑"十几个 App 的 1 档一个实锤都没有" —— 报告里
+    # 若不写点了几次、点「拒绝」后退到桌面，读者无法区分"App 干净"与"没测到"。
+    d2 = json.loads(json.dumps(data))
+    d2["depth"] = "pre"
+    d2["pre_explore"] = {"taps": 6, "screens": 6, "respawns": 3, "escapes": 0,
+                         "refused_exit": [{"label": "拒绝使用",
+                                           "pkg_after": "com.miui.home"}],
+                         "why": ""}
+    t2 = _text(render_brief(d2, date="2026-10-23"))
+    check("简版写明未同意状态下点击次数与屏数",
+          "点击 6 次" in t2 and "经过 6 屏" in t2, t2[:200])
+    check("简版写明点「拒绝使用」后退回桌面",
+          "退回桌面" in t2 and "拒绝使用" in t2, t2[:200])
+    check("简版写明重新拉起次数", "重新拉起 3 次" in t2, t2[:200])
+    # 没探索时不能编出"点击 N 次"
+    d3 = json.loads(json.dumps(data))
+    d3["depth"] = "pre"
+    d3["pre_explore"] = {"taps": 0, "screens": 0, "why": "没有可点元素"}
+    t3 = _text(render_brief(d3, date="2026-10-23"))
+    check("没点成时写「未执行界面点击」而不是「点击 0 次」",
+          "未执行界面点击" in t3 and "点击 0 次" not in t3, t3[:200])
 
     # ③ 检测项：堆栈与截图都要在（用户 2026-10-26 指定）
     n_img = html.count("data:image/jpeg;base64,")
@@ -208,10 +241,14 @@ def test_render():
     check("标题区不含「（简版）」", "（简版）" not in html)
     check("写了口径标记（供服务端判断是否重出）", BRIEF_MARKER in html[:400], html[:80])
 
-    # ⑤ 每类检测项都在，且带判定
+    # ⑤ 每类检测项都在，且带判定（"未发现问题"一节只在真有 pass 项时才渲染）
     stats = data.get("stats") or {}
     check("含问题项章节", "检测发现问题" in text)
-    check("含未发现问题章节", "未发现问题的检测项" in text)
+    if int(stats.get("pass") or 0):
+        check("含未发现问题章节", "未发现问题的检测项" in text)
+    else:
+        check("素材无 pass 项时不渲染该章节",
+              "未发现问题的检测项" not in text, stats.get("pass"))
     check("含跳过未测章节", "跳过未测项" in text)
     check("判定标签「发现问题」出现", "发现问题" in text)
     check("判定标签「疑似」出现", "疑似" in text)

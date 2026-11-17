@@ -1876,6 +1876,9 @@ class FlowRunner:
         #   「未同意状态：点击「不同意」」—— 本身就含「同意」二字，
         #   一匹配就把整段探索当成同意动作截掉了，探索反而被判成没做。
         _pe = getattr(self.scan, "pre_explore", None) or {}
+        if _pe:
+            # 存档与简版报告都要能看到"这一轮点了几次、经过几屏、卡在哪"
+            self.fr.pre_explore = dict(_pe)
         _pe_taps = int(_pe.get("taps") or 0)
         _pe_screens = int(_pe.get("screens") or 0)
         if _pe:
