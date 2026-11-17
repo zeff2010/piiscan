@@ -52,18 +52,34 @@ class FakeWalk:
 
     def foreground(self, serial):
         s = self.screens[self.idx]
-        return {"package": s.get("pkg", "com.test.app"),
-                "activity": s.get("act", "com.test.app.MainActivity")}
+        pkg = s.get("pkg", "com.test.app")
+        act = s.get("act", "com.test.app.MainActivity")
+        # ★ 必须与真实 `uiwalk.foreground()` 的返回结构一致：键是 focus/pkg/via。
+        #   2026-11-17 的教训 —— 假对象当初返回 package/activity（真实函数里
+        #   根本没有这两个键），65 项测试全绿，真机上"前台不在被测应用"这条
+        #   防线整段失效，探索一路点进了系统相册。假对象与真实结构脱钩，
+        #   测试就是在给自己发合格证。
+        focus = act if "/" in act else ("%s/%s" % (pkg, act))
+        return {"focus": focus, "pkg": pkg, "via": "window"}
 
     def dump_retry(self, serial, tries=3, wait=0.6):
+        xp = self.screens[self.idx].get("xml_pkg")
+        if xp:
+            # 结构树根节点的 package：前台接口读不到时，只有它能说出
+            # "这一屏到底是谁的界面"。
+            return '<hierarchy package="%s"></hierarchy>' % xp
         return "XML-%d" % self.idx
 
     def parse_all(self, xml):
+        if "hierarchy" in str(xml):
+            return []
         i = int(str(xml).split("-")[1])
         return [_node(lab, 100, 100 + 60 * k)
                 for k, lab in enumerate(self.screens[i]["nodes"])]
 
     def screen_texts(self, xml):
+        if "hierarchy" in str(xml):
+            return []
         i = int(str(xml).split("-")[1])
         return list(self.screens[i]["nodes"])
 
@@ -217,6 +233,50 @@ def run(check) -> None:
     check("尝试过重新拉起", calls["n"] >= 1, calls)
     check("退出也写进操作步骤", any("应用退出" in s for s in res3.ui_steps),
           res3.ui_steps)
+
+    # ---- ⑥b 点进系统图片选择器：绝不能在相册里继续点 ----
+    # ★ 2026-11-17 真机回归：前台判定读错了键名，探索在 MIUI 相册里连点了
+    #   5 次（含「新建相册」）—— 这是在别人的应用里动手，属副作用。
+    #   正确行为：一旦界面不属于被测应用，立刻停手（BACK / 结束），
+    #   相册里的元素一个都不许点。
+    fw_pick = FakeWalk([
+        {"act": "com.test.app.Home", "nodes": ["相册", "同意并继续"],
+         "on_tap": {"相册": 1, "同意并继续": 1}},
+        {"act": "com.miui.gallery.PickActivity", "pkg": "com.miui.gallery",
+         "nodes": ["新建相册", "取消", "照片"]},
+    ])
+    res_pick, out_pick, _ = _run_explore(fw_pick, budget=4.0)
+    check("跳进系统图片选择器后不再点击相册里的元素",
+          "新建相册" not in fw_pick.tapped and "取消" not in fw_pick.tapped,
+          fw_pick.tapped)
+    check("越界次数被记下来", int(out_pick.get("escapes") or 0) >= 1, out_pick)
+    check("越界后如实写原因", bool(out_pick.get("why")), out_pick)
+
+    # ---- ⑥c 前台读不到焦点时，用结构树根节点的 package 兜底 ----
+    fw_xml = FakeWalk([
+        {"act": "com.test.app.Home", "nodes": ["首页", "我的"], "xml_pkg": "com.miui.gallery"},
+    ])
+    res_xml, out_xml, _ = _run_explore(fw_xml, budget=3.0)
+    check("结构树属于别的应用时一个元素都不点", out_xml["taps"] == 0, out_xml)
+    check("结构树兜底也会把越界计入", int(out_xml.get("escapes") or 0) >= 1, out_xml)
+
+    # ---- ⑥d 前台返回结构：键名必须与真实 uiwalk.foreground 一致 ----
+    # 这条是上面那个坑的"根因断言"：mock 换成真实结构之后，_fg_pkg 必须能
+    # 从 pkg / focus 两条路都取到包名。
+    check("_fg_pkg 认 pkg 键",
+          C._fg_pkg({"pkg": "com.a.b", "focus": "com.a.b/.Main"}) == "com.a.b",
+          C._fg_pkg({"pkg": "com.a.b", "focus": "com.a.b/.Main"}))
+    check("_fg_pkg 缺 pkg 时从 focus 切",
+          C._fg_pkg({"focus": "com.c.d/com.c.d.X"}) == "com.c.d",
+          C._fg_pkg({"focus": "com.c.d/com.c.d.X"}))
+    check("_fg_pkg 读不到时返回空串", C._fg_pkg({}) == "", C._fg_pkg({}))
+
+    # ---- ⑥e 重新拉起有上限、进新屏会静置 ----
+    # 一轮里重启二十多次，会把首启的网络请求重复计成"外发 43 次"。
+    check("重新拉起有上限", 1 <= C._PRE_EXPLORE_RESPAWN_CAP <= 5,
+          C._PRE_EXPLORE_RESPAWN_CAP)
+    check("探索结果里带 respawns 字段", "respawns" in out3, out3)
+    check("进入新界面后会静置观察", float(out.get("settle") or 0) > 0, out)
 
     # ---- ⑦ 判定层：探索过就不再写"仅静置观察" ----
     class _S:

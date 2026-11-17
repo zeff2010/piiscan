@@ -1911,6 +1911,22 @@ class FlowRunner:
                     "未同意状态下点击「%s」后应用退出，此后无法在未同意状态继续操作；"
                     "该行为本身已计入事实表（未同意即不可用）"
                     % "、".join(str(r.get("label") or "") for r in _rx[:3]))
+            # 探索跑出被测应用：这一条必须写在报告里。它说明"点了很多次"里
+            # 有一部分是在系统应用（相册/桌面/浏览器）里点的 —— 既不能算作
+            # 对被测应用的触发，也是不该发生的动作。
+            _esc = int(_pe.get("escapes") or 0) if isinstance(_pe, dict) else 0
+            if _esc:
+                pr.warnings.append(
+                    "未同意探索期间有 %d 次界面已不属于被测应用（按 BACK 返回）；"
+                    "这些界面上的点击不计入对被测应用的触发" % _esc)
+            # 重启会把首启流程重放一遍：网络请求跟着重复计数。不说明的话，
+            # 报告里"向某地址发起连接 43 次"会被读成高频外发，其实是同一段
+            # 首启代码被跑了 20 遍。
+            _rs = int(_pe.get("respawns") or 0) if isinstance(_pe, dict) else 0
+            if _rs:
+                pr.warnings.append(
+                    "探索期间因点击后应用退出，重新拉起过 %d 次；"
+                    "每次重启都会重放首启流程，期间的外发计数含重复" % _rs)
             self.log("[流程]    未同意探索：点击 %d 次、经过 %d 屏（%s）"
                      % (_pe_taps, _pe_screens, _pe.get("why") or ""))
 

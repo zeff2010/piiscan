@@ -7613,6 +7613,13 @@ def _landing(res: ScanResult, cfg, live, deadline: float,
 _PRE_EXPLORE_STATE_TAPS = 8      # 同一个界面最多点几个元素
 _PRE_EXPLORE_IDLE = 3            # 连续几次点击界面无变化就退一层
 _PRE_EXPLORE_TAP_CAP = 90        # 单轮总点击数上限（防某页面无限刷新）
+# 连续几次"离开被测应用且 BACK 回不来"就收工。
+# 2026-11-17 真机：前台判定失效时，探索在 MIUI 相册里连点了 5 次
+# （含「新建相册」）—— 这不是"没测到"，这是在别人的应用里动手。
+_PRE_EXPLORE_ESCAPE_CAP = 4
+# 探索期间"重新拉起应用"的次数上限：每次重启都会重放首启流程，网络请求
+# 跟着重复计数（真机上把它写成了"外发 43 次"），而换来的常常还是同一屏。
+_PRE_EXPLORE_RESPAWN_CAP = 3
 
 # 能把"弹窗挡住的主界面"解锁出来的按钮：优先点它们，否则在一个模态弹窗上
 # 点二十个背景元素也全是空转。
@@ -7639,6 +7646,51 @@ _PRE_FORBID_WORDS = (
 def _pre_exit_word(label: str) -> bool:
     t = (label or "").strip()
     return bool(t) and any(w in t for w in _PRE_EXIT_WORDS)
+
+
+def _fg_pkg(fg: Dict[str, str]) -> str:
+    """从 `uiwalk.foreground()` 的返回值里取"前台应用包名"。
+
+    ★ 2026-11-17 真机踩坑（这一条值一次真机复跑）：
+      `foreground()` 返回的键是 `focus` / `pkg` / `via`，而 1 档探索当初把
+      它写成了 `package` / `activity` —— 两个键都不存在，于是取出来恒为空：
+        ① 「前台不在被测应用」这道防线整段失效，探索从应用的图片选择器
+           一路点进了系统相册（连「新建相册」都点了），在设备上留下副作用；
+        ② 屏数统计恒为 0，报告写成「点击 11 次、经过 0 屏」；
+        ③ 「点击后是否跳出应用」的即时判定同样失效。
+      测试里的假界面恰好也返回 `package/activity`，65 项全绿，真机全废 ——
+      所以假对象必须返回**真实结构**，这里也统一走 `_fg_pkg` 收口。
+    """
+    fg = fg or {}
+    p = str(fg.get("pkg") or "").strip()
+    if p:
+        return p
+    # `pkg` 读不到时从 focus（"包名/类名"）里切：dumpsys 两条路径的兜底，
+    # 空 focus 才真的算"读不到"，此时返回空串由调用方按"未知"处理。
+    f = str(fg.get("focus") or "").strip()
+    if "/" in f:
+        return (f.split("/")[0] or "").strip()
+    return ""
+
+
+def _xml_package(xml: str) -> str:
+    """从结构树里取根节点的 `package` 属性（`mCurrentFocus` 读不到时的兜底）。
+
+    真机上确实会出现"`dumpsys window` 拿不到焦点、但 uiautomator 的树读得到"
+    的情况；此时若只信前台接口，就会把系统相册当成被测应用继续点下去。
+    """
+    if not xml:
+        return ""
+    m = re.search(r'package="([A-Za-z0-9_.]+)"', xml)
+    return (m.group(1) or "").strip() if m else ""
+
+
+def _pkg_is_app(pkg: str, package: str) -> bool:
+    """这个包名是否属于被测应用（含其子包）。"""
+    p = (pkg or "").strip()
+    if not p:
+        return False
+    return p == package or p.startswith(package + ".")
 
 
 def _pre_may_tap(label: str) -> bool:
@@ -7684,7 +7736,8 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
     span = max(1.0, deadline - t0)
     out: Dict[str, Any] = {
         "taps": 0, "screens": 0, "visited": [], "refused_exit": [],
-        "skipped_consent": 0, "perm_dialogs": 0, "budget": round(span, 1), "why": "",
+        "skipped_consent": 0, "perm_dialogs": 0, "escapes": 0, "respawns": 0,
+        "budget": round(span, 1), "why": "",
     }
     # 先落盘再干活：中途异常中断时，报告仍能看到"点过几屏"，
     # 而不是因为异常回滚成"没探索"。
@@ -7694,6 +7747,8 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
     state_taps = 0
     state_key = ""
     no_cand = 0
+    escapes = 0
+    respawns = 0
     last_label = ""
     last_was_exit = False
     _cached_xml = None       # 点击后抓到的结构树，界面没再变就下一轮直接复用
@@ -7718,11 +7773,11 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
             break
 
         fg = uiwalk.foreground(serial)
-        pkg_now = str(fg.get("package") or "").strip()
-        act_now = str(fg.get("activity") or "").strip()
+        pkg_now = _fg_pkg(fg)
+        act_now = str(fg.get("focus") or "").strip()
 
         # ---- 前台不在被测应用上 ----
-        if pkg_now and pkg_now != package:
+        if pkg_now and not _pkg_is_app(pkg_now, package):
             # ① 系统权限弹窗：**整屏不点**。点「允许」等于替用户授权，
             #    点「拒绝」等于替用户拒绝 —— 两者都会改写被测状态，之后
             #    测到的就不再是"App 原本的行为"。直接退掉，只记一笔事实。
@@ -7738,17 +7793,30 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
                 state_key = ""
                 _cached_xml = None
                 continue
-            # ② 跳到别的应用（浏览器看政策、拉起微信登录）：先 BACK 一次看能不能回来。
-            #    直接 respawn 的代价是 5~30 秒重注入，而多数外跳一步 BACK 就回来了。
+            # ② 跳到别的应用（浏览器看政策、图片选择器、微信登录）：先 BACK 一次
+            #    看能不能回来。直接 respawn 的代价是 5~30 秒重注入，而多数外跳
+            #    一步 BACK 就回来了。
+            #    注意"外跳"和"退出"不是一回事：MIUI 的图片选择器包名是
+            #    `com.miui.gallery`，它跟桌面一样不属于被测应用，但 BACK 就回来了。
             if not uiwalk.is_launcher_pkg(pkg_now):
                 uiwalk.back(serial)
                 time.sleep(max(0.8, interval * 0.6))
                 fg = uiwalk.foreground(serial)
-                pkg_now = str(fg.get("package") or "").strip()
-                act_now = str(fg.get("activity") or "").strip()
+                pkg_now = _fg_pkg(fg)
+                act_now = str(fg.get("focus") or "").strip()
                 _cached_xml = None
-                if pkg_now == package:
+                if _pkg_is_app(pkg_now, package):
                     continue
+                # 一次 BACK 没回来：这是"跑出去回不来"，记一笔。
+                escapes += 1
+                out["escapes"] = escapes
+                log("[*] 1 档探索：前台离开被测应用（%s），BACK 未返回"
+                    % (pkg_now or "读不到包名"))
+                if escapes >= _PRE_EXPLORE_ESCAPE_CAP:
+                    out["why"] = ("连续 %d 次离开被测应用且返回失败（最后一次前台 %s），"
+                                  "停止探索以免在系统应用里误点" % (escapes, pkg_now or "未知"))
+                    log("[!] 1 档探索：%s" % out["why"])
+                    break
             # ③ 确实退出了（点了「不同意」/被系统清掉）
             if last_was_exit and last_label:
                 out["refused_exit"].append({"label": last_label, "pkg_after": pkg_now})
@@ -7764,8 +7832,20 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
                 last_was_exit = False
                 last_label = ""
             if callable(respawn):
+                # ★ 重新拉起要设上限（2026-11-17 真机）：点了「拒绝使用」→ 应用退出
+                #   → 重新拉起 → 首启重放 → 版本检查又发一次。一轮里重启 20 多次，
+                #   报告就写成"向 x 发起网络连接共 43 次"，读起来像高频外发，
+                #   实际是同一段首启代码被重放了 20 遍。重启换来的是同一屏，
+                #   边际收益为零，所以只给几次，且把次数写进报告。
+                if respawns >= _PRE_EXPLORE_RESPAWN_CAP:
+                    out["why"] = ("已重新拉起 %d 次，仍无法在未同意状态下进入新界面"
+                                  % respawns)
+                    log("[*] 1 档探索：%s" % out["why"])
+                    break
                 try:
                     if respawn():
+                        respawns += 1
+                        out["respawns"] = respawns
                         time.sleep(max(2.0, interval))
                         state_key = ""
                         state_taps = 0
@@ -7785,6 +7865,33 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
             out["why"] = "结构树连续取不到（设备侧 uiautomator 无响应）"
             break
 
+        # ★ 结构树是第一手证据：`mCurrentFocus` 读不到时（MIUI 上常见），
+        #   改用树根节点的 package 兜底。只要这一屏不属于被测应用，
+        #   **一个元素都不许点** —— 2026-11-17 真机就是这样在系统相册里
+        #   连点了 5 次（还点了「新建相册」）。这是副作用，不是探索。
+        xml_pkg = _xml_package(xml)
+        if xml_pkg and not _pkg_is_app(xml_pkg, package):
+            if any(xml_pkg == p or xml_pkg.startswith(p + ".")
+                   for p in uiwalk.PERM_PACKAGES):
+                out["perm_dialogs"] = int(out.get("perm_dialogs") or 0) + 1
+                log("[*] 1 档探索：界面属于系统权限弹窗（%s），按 BACK 关闭、不代为作答"
+                    % xml_pkg)
+            else:
+                escapes += 1
+                out["escapes"] = escapes
+                log("[*] 1 档探索：界面属于 %s（不在被测应用），按 BACK 返回" % xml_pkg)
+            uiwalk.back(serial)
+            time.sleep(max(0.8, interval * 0.6))
+            state_key = ""
+            no_cand = 0
+            _cached_xml = None
+            if escapes >= _PRE_EXPLORE_ESCAPE_CAP:
+                out["why"] = ("连续 %d 次落在被测应用之外（最后一次界面属于 %s），"
+                              "停止探索以免在系统应用里误点" % (escapes, xml_pkg))
+                log("[!] 1 档探索：%s" % out["why"])
+                break
+            continue
+
         # 换屏了才记一屏、才拍一张图（1 档总共 20 张配额）
         fkey = uiwalk.focus_key(act_now) if act_now else ""
         if fkey and fkey != state_key:
@@ -7796,6 +7903,12 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
                 out["visited"].append(_lam)
             observe_screen(res, "未同意探索：%s" % _lam, serial, xml=xml)
             log("[*] 1 档探索：进入「%s」（第 %d 屏）" % (_lam, out["screens"]))
+            # ★ 进入新界面先静置一拍再动手：SDK 取设备标识基本都在界面起来
+            #   之后异步发起（真机实测广点通是在 SplashActivity 起来后、由
+            #   GDT_IO_THREAD 线程去读）。点得太急，读取还没发生就被下一个
+            #   点击打断，事后只能看到"没有读取"。
+            time.sleep(max(0.8, interval))
+            out["settle"] = round(float(out.get("settle") or 0) + max(0.8, interval), 1)
 
         if state_taps >= _PRE_EXPLORE_STATE_TAPS:
             uiwalk.back(serial)
@@ -7863,12 +7976,13 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
 
         # ---- 这一下有没有效果 ----
         fg2 = uiwalk.foreground(serial)
-        pkg2 = str(fg2.get("package") or "").strip()
-        if pkg2 and pkg2 != package:
-            continue            # 退出到别的应用，回到循环开头处理
+        pkg2 = _fg_pkg(fg2)
+        if pkg2 and not _pkg_is_app(pkg2, package):
+            continue            # 退出/跳转到别的应用，回到循环开头处理
         xml2 = uiwalk.dump_retry(serial, tries=1, wait=0.3)
         after_texts = set(uiwalk.screen_texts(xml2)) if xml2 else set()
-        if act_now != str(fg2.get("activity") or "").strip() or before_texts != after_texts:
+        focus2 = str(fg2.get("focus") or "").strip()
+        if (focus2 and act_now and focus2 != act_now) or before_texts != after_texts:
             idle = 0
             _cached_xml = xml2      # 界面确实变了：下一轮直接复用这份，省一次 dump
         else:
