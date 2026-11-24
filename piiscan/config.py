@@ -201,12 +201,17 @@ class ScanConfig:
     # 重放每步之间的等待（秒）。首轮那 1.2 秒里有一部分是留给模型看下一张
     # 截图的，回放只看动作结果，可以更短；但太快会在界面还没加载完时 dump。
     replay_interval: float = 0.8
-    # ---- 检测深度（四档，2026-10-31 用户定的口径）----
-    #   pre     1 档：只测「同意隐私政策之前」的行为，不点同意、不遍历
-    #   light   2 档：同意后 5 分钟，不登录，只点到二级目录
-    #   deep    3 档：深度（约 15 分钟），尝试微信快捷登录 / 手机号验证码登录
-    #   extreme 4 档：极致（约 60 分钟），尽可能把功能走全
+    # ---- 检测深度（三档，2026-11-19 用户重定的口径）----
+    #   pre   1 档：只测「同意隐私政策之前」的行为，不点同意、不遍历（约 7 分钟）
+    #   light 2 档：同意后约 15 分钟，不登录，只点到二级目录
+    #   deep  3 档：全功能遍历（约 60 分钟），可登录，层级不限
     # normal 是历史档位（约 1.5 分钟），保留只为读得懂旧存档；表单不再提供。
+    #
+    # ★ 2026-11-19 由四档减为三档：原来的 3 档（15 分钟 / 可登录）取消 ——
+    #   它和 2 档只差"能不能登录"，而 15 分钟在电商/生活服务类 App 上连主导航
+    #   都铺不满，登录了也走不了几个页面，属于"看着比 2 档深、实际覆盖差不多"。
+    #   原 4 档（60 分钟）直接改名为 3 档；原 2 档的时长提到 15 分钟
+    #   （5 分钟只够点完首屏 icon，二级菜单一个都进不去，等于白跑一档）。
     # 为什么要有档位而不是让人手调六个数：这六个参数彼此耦合 ——
     # 只加时长不加上限，事件会先被 global_event_cap 截断；
     # 只加上限不加时长，遍历根本走不到深层的界面。
@@ -239,7 +244,7 @@ class ScanConfig:
           档位表里的 normal 一栏仍然保留，它是对照基准（测试据此校验倍差）。
 
         未知档位名按 normal 处理而不是报错：表单/配置里写错一个词不该让整轮
-        检测起不来；但也别静默成 deep（那会把 15 分钟当 90 秒用，
+        检测起不来；但也别静默成 deep（那会把 1 小时当 90 秒用，
         结果是一份"看起来测过"的报告）。返回生效档位，日志里打出来即可。
         """
         want = (name or self.depth or "normal").strip().lower()
@@ -261,9 +266,9 @@ class ScanConfig:
         return want
 
 
-# 检测深度档位（2026-10-31 四档）。数值不是拍脑袋定的，每条都对应一次实测教训：
-#   · duration       deep 15 分钟：常规 90 秒只够点完首屏 icon，进不到二级菜单；
-#                    extreme 60 分钟是"尽可能走全功能"的档，实测 15 分钟在
+# 检测深度档位（2026-11-19 三档）。数值不是拍脑袋定的，每条都对应一次实测教训：
+#   · duration       2 档 15 分钟：5 分钟只够点完首屏 icon，进不到二级菜单；
+#                    3 档 60 分钟是"尽可能走全功能"的档，实测 15 分钟在
 #                    电商/生活服务类 App 上只够铺开主导航 + 两三层菜单。
 #   · policy_wait    加固/大型 App 冷启动要 30 秒以上才弹隐私框，22 秒会漏；
 #                    高档位给得更宽，因为解壳时间随包体增大而变长。
@@ -274,7 +279,10 @@ class ScanConfig:
 #                    单 hook 只留 12 条时，某个 SDK 的高频调用会把其他 SDK 挤掉，
 #                    差集里就凭空少几个 SDK —— 这是最隐蔽的假阴性。
 #   · max_depth      2 档「只点二级」：层级按页面图从入口点了几跳记，0 = 不限。
-#   · login_enabled  1、2 档不做登录（口径是"游客可见"）；3、4 档才尝试登录。
+#   · login_enabled  1、2 档不做登录（口径是"游客可见"）；3 档才尝试登录。
+#   · consent_only   1 档：不点同意；政策取到之后**继续在未同意状态下点**
+#                    （除了同意，弹窗上的政策链接/设置/关闭、「不同意」「仅浏览」
+#                    之后仍能进的主界面都算），因为只有动起来才会触发 SDK 初始化。
 #   · consent_only   1 档：不点同意；政策取到之后**继续在未同意状态下点**
 #                    （除了同意，弹窗上的政策链接/设置/关闭、「不同意」「仅浏览」
 #                    之后仍能进的主界面都算），因为只有动起来才会触发 SDK 初始化。
@@ -285,7 +293,11 @@ DEPTH_PROFILES: Dict[str, Dict[str, Any]] = {
         #   剩下 100 秒只够点十下左右（每次 dump 要 2~8 秒），
         #   而那些只在二级界面才初始化的 SDK 一个都碰不到 —— 这正是
         #   "跑了十几个 App、一个同意前实锤都没有"的直接原因。
-        "duration": 420, "policy_wait": 45, "ui_tap_interval": 1.4,
+        # ★ 2026-11-18 45 → 60：与 4 档对齐。真机对照（同一批 App 跑 1 档
+        #   与 4 档）量出来的采集点在**冷启动后 23~48 秒**：驿站助手 23.0s
+        #   读 Android ID，贝利自动点击器 48.2s 读。45 秒的窗口对前者勉强、
+        #   对后者差 3 秒 —— 而这段静置时间本来就是 1 档最该拿到的东西。
+        "duration": 420, "policy_wait": 60, "ui_tap_interval": 1.4,
         "shot_every_taps": 3, "max_shots": 20,
         "max_events_per_hook": 20, "global_event_cap": 4000,
         "repro_duration": 120,
@@ -293,12 +305,16 @@ DEPTH_PROFILES: Dict[str, Dict[str, Any]] = {
         "max_taps_per_state": 20, "list_pull_max": 1, "max_relaunch": 3,
     },
     "light": {
-        "duration": 300, "policy_wait": 30, "ui_tap_interval": 1.4,
-        "shot_every_taps": 4, "max_shots": 24,
-        "max_events_per_hook": 20, "global_event_cap": 5000,
-        "repro_duration": 150,
+        # ★ 2026-11-19 300 → 900 秒（用户口径：1 档 7 分钟、2 档 15 分钟）。
+        #   原来的 5 分钟只够"点完首屏 + 进一两个二级页"，报告里的
+        #   "入口探索比例"长期停在 20%~30% —— 这一档的名字（浅测）于是
+        #   成了自我实现的预言。max_depth 仍为 2：用途是"快速过一遍主流程"。
+        "duration": 900, "policy_wait": 30, "ui_tap_interval": 1.4,
+        "shot_every_taps": 4, "max_shots": 36,
+        "max_events_per_hook": 24, "global_event_cap": 9000,
+        "repro_duration": 180,
         "max_depth": 2, "login_enabled": False, "consent_only": False,
-        "max_taps_per_state": 24, "list_pull_max": 2, "max_relaunch": 4,
+        "max_taps_per_state": 30, "list_pull_max": 2, "max_relaunch": 4,
     },
     "normal": {
         "duration": 90, "policy_wait": 22, "ui_tap_interval": 1.2,
@@ -309,14 +325,10 @@ DEPTH_PROFILES: Dict[str, Dict[str, Any]] = {
         "max_taps_per_state": 30, "list_pull_max": 2, "max_relaunch": 4,
     },
     "deep": {
-        "duration": 900, "policy_wait": 45, "ui_tap_interval": 1.6,
-        "shot_every_taps": 3, "max_shots": 60,
-        "max_events_per_hook": 40, "global_event_cap": 12000,
-        "repro_duration": 300,
-        "max_depth": 0, "login_enabled": True, "consent_only": False,
-        "max_taps_per_state": 45, "list_pull_max": 3, "max_relaunch": 6,
-    },
-    "extreme": {
+        # ★ 2026-11-19：原 4 档（extreme）整体改名为 3 档，参数原样沿用 ——
+        #   这组值是唯一经过真机整轮验证的"走全功能"预算：1 小时里铺开主导航、
+        #   逐层下钻、列表上拉到底、可登录。原 3 档（900 秒 / 可登录）取消，
+        #   因为它与 2 档只差"能不能登录"，15 分钟连主导航都铺不满。
         "duration": 3600, "policy_wait": 60, "ui_tap_interval": 1.8,
         "shot_every_taps": 2, "max_shots": 160,
         "max_events_per_hook": 80, "global_event_cap": 40000,
@@ -328,19 +340,24 @@ DEPTH_PROFILES: Dict[str, Dict[str, Any]] = {
 
 # 档位别名：老表单/老配置里的写法不能直接失效。
 # 「standard / quick」在早期文档里出现过；normal 保留为历史档（1.5 分钟）。
+# ★ 2026-11-19 减为三档后，原来的 "4"/"extreme"（60 分钟）与 "3"
+#   （15 分钟深度档）都指向现在的 3 档 —— 旧调用方按老习惯填 4，
+#   拿到的是"尽量走全功能"，正是它本来想要的那一档，不会悄悄降级。
 _DEPTH_ALIASES: Dict[str, str] = {
     "standard": "normal", "quick": "normal", "fast": "normal",
-    "1": "pre", "2": "light", "3": "deep", "4": "extreme",
-    "shallow": "light", "full": "extreme", "max": "extreme",
+    "1": "pre", "2": "light", "3": "deep", "4": "deep",
+    "extreme": "deep", "shallow": "light", "full": "deep", "max": "deep",
 }
 
 # 表单/日志里用的档位中文名（一处定义，平台与报告都从这里取）。
+# ★ extreme 已不再是合法档位，但**报告层仍要能读旧存档**：
+#   历史任务存档里的 depth 是 "extreme"，查不到标签就会把英文露在报告里。
+#   兼容映射写在 sop_report._DEPTH_NAME 与 sop_brief._scope_line。
 DEPTH_LABELS: Dict[str, str] = {
-    "pre": "1 档 · 仅同意前（含未同意状态探索）",
-    "light": "2 档 · 同意后浅测（5 分钟 / 不登录 / 二级）",
+    "pre": "1 档 · 仅同意前（含未同意状态探索，约 7 分钟）",
+    "light": "2 档 · 二级菜单（约 15 分钟 / 不登录 / 只到二级）",
     "normal": "常规（历史档，约 1.5 分钟）",
-    "deep": "3 档 · 深度（15 分钟 / 可登录）",
-    "extreme": "4 档 · 极致（60 分钟 / 走全功能）",
+    "deep": "3 档 · 全功能（约 60 分钟 / 可登录 / 层级不限）",
 }
 
 

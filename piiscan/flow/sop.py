@@ -1630,7 +1630,7 @@ class FlowRunner:
         说了一个根本不存在的窗口，属于结论与事实不符。
 
         判据只用两样可核对的事实：档位声明了 consent_only，且本轮没有登记到
-        任何同意动作。2~4 档即使没捕获到同意动作，也不能断言"没有同意" ——
+        任何同意动作。2、3 档即使没捕获到同意动作，也不能断言"没有同意" ——
         可能是登记链断了（以观书法 mbsf6 就是这么误判的），那种情形仍按
         "无法分辨先后"保守处理。
         """
@@ -1800,6 +1800,156 @@ class FlowRunner:
         self._end(pr, M.PHASE_DONE)
         return pr
 
+    # ---------------------------------------------------------------- P1 辅助
+    def _merge_pre_consent_perms(self) -> int:
+        """把「未同意阶段索要可采集个人信息的权限」并入 Q003。
+
+        ★ 用户 2026-11-18 口径（第 1 条）：同意前申请这类权限的行为，合并到
+          「3. 未经用户同意收集使用个人信息」。不改 Q012 —— 它判的是"这个
+          权限与当前功能是否匹配"，是另一回事，两者混一起会互相稀释。
+
+        状态怎么定（两种情形，措辞必须分开，否则就是假话）：
+          · 本轮另有取到值的收集 → Q003 已是「发现问题」，这里只追加事实；
+          · 只有索权、没取到值 → 也判「发现问题」，但描述写的是"索要权限"，
+            并注明本轮未观测到该权限对应的取值 —— 不写"已收集"。
+
+        只认系统弹窗（`perm_scenes` 的来源）。写剪贴板之类的 API 既不弹窗
+        也不采集个人信息，按用户口径不算问题。
+        """
+        scenes = getattr(self.scan, "perm_scenes", None) or []
+        hits = CMP.pre_consent_perm_requests(
+            scenes, getattr(self.scan, "events", None))
+        if not hits:
+            return 0
+        # 同一权限弹多次只写一条事实（次数另计）：报告要的是"要过哪些权限"，
+        # 而不是"这个弹窗出现了 7 次"——后者对复核没有增量信息。
+        seen: Dict[str, Dict[str, Any]] = {}
+        for s in hits:
+            g = CMP.norm_perm_group(str(s.get("perm") or ""))
+            if g and g not in seen:
+                seen[g] = s
+        _parts = []
+        for g, s in seen.items():
+            _t = "冷启动后 %.1f 秒" % (float(s.get("at_ms") or 0) / 1000.0)
+            _parts.append("%s（%s）" % (g, _t))
+        names = "、".join(_parts)
+        _raw = " ｜ ".join(
+            (str(s.get("dialog_text") or s.get("perm_raw") or "")).strip()[:80]
+            for s in list(seen.values())[:3]
+            if (s.get("dialog_text") or s.get("perm_raw")))
+        facts = [["未同意阶段索要的权限", names]]
+        if _raw:
+            facts.append(["弹窗文字", _raw])
+        # 有没有真的替用户点了「允许」——这是"我们改没改变被测状态"的交代
+        _tapped = [g for g, s in seen.items() if "代点" in str(s.get("action") or "")]
+        facts.append(["是否代为作答",
+                      ("是（%s；已注明为本轮采集动作，不代表用户授权）"
+                       % "、".join(_tapped)) if _tapped else
+                      "否（仅取证，弹窗未由采集脚本作答）"])
+        # 证据是否够硬：app_before 明确为 True 才算"确认应用在弹窗之前还在前台"
+        _soft = [g for g, s in seen.items() if s.get("app_before") is not True]
+        if _soft:
+            facts.append(["证据待补",
+                          "、".join(_soft) + "：弹窗出现前未能确认被测应用在前台，"
+                          "该条只记为线索，不足以单独认定"])
+        facts.append(["本项认定依据",
+                      "系统权限弹窗本身（索权行为）；是否已实际取到该权限对应的"
+                      "个人信息，见本项「采集类事件」部分"])
+        _state = SUSPECT if _soft else FAIL
+        _absent = self._consent_absent()
+        _when = ("本轮未执行「同意」动作、全程处于未同意状态" if _absent
+                 else "在用户同意隐私政策之前")
+        cur = self._item("Q003")
+        if cur.state == FAIL:
+            # 已经因"实际取到取值"认定过：这句只是把索权行为补进同一条结论，
+            # 不另起一条 —— 否则同一时段的行为会被记成两件事。
+            if "索要" not in (cur.desc or ""):
+                cur.desc = (cur.desc or "").rstrip("。") + \
+                    "；同一期间还向用户索要了%s权限" % "、".join(seen.keys())
+            cur.facts.extend(facts)
+            return len(seen)
+        self._set(
+            "Q003", _state, phase="P1",
+            level=("高" if _state == FAIL else "中"),
+            confidence=("确证" if _state == FAIL else "疑似"),
+            desc=("%s，App 即向用户索要了%s权限；"
+                  "本轮未观测到这些权限对应的实际取值%s"
+                  % (_when, "、".join(seen.keys()),
+                     "，该索权行为本身已构成「未经同意收集」的前置动作"
+                     if _state == FAIL else
+                     "；且弹窗出现前未能确认应用在前台，需人工复核")),
+            evidence=[Evidence("ui", "未同意阶段索要权限", names, "P1")],
+            facts=facts)
+        self.log("[流程]    未同意阶段索要权限：%s（%s）→ Q003"
+                 % ("、".join(seen.keys()),
+                    "已认定" if _state == FAIL else "疑似"))
+        return len(seen)
+
+    def _append_p1_attempts(self, pre: Sequence[Any]) -> None:
+        """把「尝试获取但未成功」写进事实表 —— 写明、标注未成功、**不计违规**。
+
+        ★ 用户 2026-11-18 口径（第 4 条）。这类事件原先被四级漏斗第②级
+          （取值有效性）整批挡掉，报告里一个字都没有：复核员看到"没收集过
+          IMEI"，而 App 其实试过、只是被系统拒绝。
+          反过来若据此认定违规，又是假话（Android 10 起读 IMEI 必然失败）。
+          所以单独成一行事实，状态一律不动。
+        """
+        try:
+            att = CMP.attempted_types(pre, device_ids=self.fr.device_identities)
+        except Exception as e:
+            self.log("[!] 尝试获取统计失败（不影响结论）：%s" % str(e)[:100])
+            return
+        if not att:
+            return
+        _desc = CMP.describe_attempted(att)
+        _n = sum(int(r.get("count") or 0) for r in att.values())
+        # 落进 flow.json：简版的「本轮检测范围」要据此写一句，否则"未收集"
+        # 会被读成"压根没试过"（见 sop_brief._scope_line）。
+        self.fr.p1_attempted = {"count": _n, "text": _desc, "types": len(att)}
+        for qid in ("Q002", "Q003"):
+            st = self.fr.items.get(qid)
+            if st is None:
+                continue
+            st.facts.append([
+                "尝试获取但未成功（不计为违规）",
+                "%s；共 %d 次接口调用未取到有效值。"
+                "该行为只说明 App 发起过读取，不构成「已收集」，"
+                "也不作为违规认定依据" % (_desc, _n)])
+        self.log("[流程]    尝试获取未成功 %d 次（%d 类），已写入事实表、不计违规"
+                 % (_n, len(att)))
+
+    def _append_consent_sync(self) -> None:
+        """把「点击同意后 1.5 秒内」的采集写进事实表 —— 写明、**不计为同意前**。
+
+        ★ 用户 2026-11-19 口径：同一交互内的采集"记录但不判违规"。
+          这一支不是可选项，而是修正一种**报告失真**：驿站助手 4 档那一轮
+          887 条事件里，点击前只有 1 条（读时区），点击后 1.5 秒内却有 74 条
+          （其中 400 毫秒就读了 Android ID 并外发）。旧报告只写"本轮未取得
+          任何个人信息取值"，读者看到的是"什么都没发生"—— 与事实相反。
+          判定可以是不违规，但**不能让人以为没采**。
+
+        为什么只追加事实、不动状态：Q003 问的是"同意前有没有实际取得"，
+        这些事件发生在点击之后，按分水岭口径不属于该项；挪进事实表既不改变
+        结论，也把"间隔极短"这个可复核的现象留在了纸面上。
+        """
+        n = int(getattr(self.fr, "consent_sync_events", 0) or 0)
+        if n <= 0:
+            return
+        _sum = str(getattr(self.fr, "consent_sync_summary", "") or "")
+        _ms = int(CMP.CONSENT_EDGE_MS)
+        _txt = ("%d 条（点击「同意」后 %d 毫秒内%s）。与同意动作属于同一交互，"
+                "按本轮口径不计为「同意前收集」；但它说明收集与同意的间隔极短："
+                "用户点下同意后 1.5 秒内，上述读取就已经完成"
+                % (n, _ms, ("：" + _sum) if _sum else ""))
+        for qid in ("Q002", "Q003"):
+            st = self.fr.items.get(qid)
+            if st is None:
+                continue
+            st.facts.append(["同一交互内采集（不计为同意前）", _txt])
+        self.log("[流程]    同一交互内采集 %d 条（点击后 %d ms 内），"
+                 "已写入事实表、不计为同意前收集%s"
+                 % (n, _ms, ("：" + _sum) if _sum else ""))
+
     # ================================================================== P1
     def p1_pre_consent(self) -> PhaseResult:
         """未同意阶段：凡同意前采集到个人信息，一律算未经同意收集。
@@ -1879,6 +2029,20 @@ class FlowRunner:
         if _pe:
             # 存档与简版报告都要能看到"这一轮点了几次、经过几屏、卡在哪"
             self.fr.pre_explore = dict(_pe)
+        # 静置观测单独存档：1 档的采集多半发生在"我们没动手"的那段时间里
+        # （真机实测 Android ID 在冷启动后 23~48 秒被读，而那几个 App 一点
+        #  「不同意」就退出）。只写"点了几下"会让读者以为采集只在点击后发生。
+        _ps = getattr(self.scan, "pre_settle", None) or {}
+        if _ps:
+            self.fr.pre_settle = dict(_ps)
+        # 同意分水岭复核的条数：简版「本轮检测范围」要用它交代
+        # "有多少条其实是点「同意」那一下带出来的"（见 sop_brief._scope_line）。
+        self.fr.consent_reclassified = int(
+            getattr(self.scan, "consent_reclassified", 0) or 0)
+        self.fr.consent_sync_events = int(
+            getattr(self.scan, "consent_sync_events", 0) or 0)
+        self.fr.consent_sync_summary = str(
+            getattr(self.scan, "consent_sync_summary", "") or "")
         _pe_taps = int(_pe.get("taps") or 0)
         _pe_screens = int(_pe.get("screens") or 0)
         if _pe:
@@ -1889,8 +2053,8 @@ class FlowRunner:
                              else "未同意状态下静置观察（未点到界面元素：%s）"
                                   % (_pe.get("why") or "原因未记录"))
         else:
-            # 2~4 档没有"未同意探索"这个阶段，沿用原判定：同意之前的遍历步数。
-            # （这一支不能删：2~4 档的 PASS/NOT_TESTED 全靠它。）
+            # 2、3 档没有"未同意探索"这个阶段，沿用原判定：同意之前的遍历步数。
+            # （这一支不能删：2、3 档的 PASS/NOT_TESTED 全靠它。）
             pre_steps = []
             for s in (getattr(self.scan, "ui_steps", None) or []):
                 if "同意" in str(s):
@@ -2132,7 +2296,10 @@ class FlowRunner:
                        "是否携带个人信息，因此不对「已实际取得取值」下结论"
                        % (hosts, len(sinks["before_hosts"]), sinks["before_consent"]),
                 facts=[["同意前发起网络连接", "%d 次" % sinks["before_consent"]],
-                       ["个人信息取值", "未取得"],
+                       # ★ 必须限定「同意前」（2026-11-19 贝利实测）：
+                       #   同一张事实表里还会出现「同一交互内采集：设备标识 4 条」，
+                       #   只写"个人信息取值 未取得"会读成整轮都没取到值。
+                       ["同意前个人信息取值", "未取得"],
                        ["本项观测范围", "仅记录连接目标地址与次数，未记录传输内容"]])
         else:
             # ★「没观测到」不等于「没问题」（简小知实测）：
@@ -2141,14 +2308,38 @@ class FlowRunner:
             #   "我们没有去看"。这两件事在报告里必须分开写，否则复核员
             #   会照着"未发现问题"的结论签字。做了主动探索的轮次才判 pass。
             if explored:
+                # ★ 数字必须现算，不能写死 0（2026-11-18 真机撞到）：
+                #   1 档驿站助手同意前有 2 条事件（读时区），被 `_SYS_SETTING_PI`
+                #   判为"不是个人信息"—— 这个结论没错，但报告写"同意前事件数
+                #   0 条"就与存档对不上了，复核员一对数就发现报告在说假话。
+                #   口径：写**行为事件**的真实条数，再说明"均未取到有效取值"。
+                _n_pre_all = len(pre) + len(edge_pre)
                 self._set("Q002", PASS, phase="P1", confidence="确证",
                           desc="冷启动至用户同意隐私政策期间，在已执行的%s中，"
                                "均未观测到个人信息收集行为" % _explore_desc,
-                          evidence=[Evidence("frida", "同意前事件 0 条（%s）"
-                                             % _explore_desc, "", "P1")],
-                          facts=[["同意前事件数", "0 条"],
+                          evidence=[Evidence("frida",
+                                             "同意前事件 %d 条，均未取到有效个人信息取值（%s）"
+                                             % (_n_pre_all, _explore_desc), "", "P1")],
+                          facts=[["同意前事件数",
+                                  ("%d 条（均未取到有效个人信息取值）" % _n_pre_all)
+                                  if _n_pre_all else "0 条"],
                                  ["未同意状态交互探索", _explore_desc],
                                  ["结论边界", "仅覆盖本轮已触发的界面，未触发的路径不在结论范围内"]])
+                # ★ Q003 必须给出自己的结论（2026-11-18）：它问的是"有没有
+                #   实际取得取值"，与 Q002（有没有收集行为）不是一回事。
+                #   不 set 的话会落到兜底的"缺少阶段 P3 的证据"—— 而 P3 在
+                #   1 档本来就不执行，等于用一句错的原因掩盖了"没取到值"。
+                #   顺序上它在 `_merge_pre_consent_perms()` 之前，后者若有
+                #   同意前索权，会把这个「未测」改成「发现问题」。
+                self._set(
+                    "Q003", NOT_TESTED, phase="P1",
+                    reason=("本轮在未同意状态下共观测到 %d 条行为事件，"
+                            "但没有一条取到有效个人信息取值；证据等级不足以认定"
+                            "「已实际取得」，同样不足以认定「未取得」%s"
+                            % (_n_pre_all,
+                               "；本档位不执行同意动作与界面遍历，"
+                               "未触发的路径不在结论范围内" if _absent else "")),
+                    facts=[["未同意状态事件数", "%d 条" % _n_pre_all]])
             else:
                 # ★ 措辞必须和存档对得上（自设捏脸第 4 轮教训）：
                 #   这一支的真实语义是"观测到了行为，但没取到有效取值"，
@@ -2210,12 +2401,25 @@ class FlowRunner:
                                  ["未同意状态交互探索", _nt_scope]])
                 # Q003 同理：不写的话会落到"缺少阶段 P3 的证据"，
                 # 而 P3 在 1 档本来就是不执行的阶段。
+                # ★ 措辞必须限定「同意之前」（2026-11-19）：点击同意后 1.5 秒内
+                #   往往就有读 Android ID 之类的事件，只写"本轮未取得任何取值"
+                #   会被读成整轮什么都没采到 —— 与同一交互事实行自相矛盾。
                 self._set("Q003", NOT_TESTED, phase="P1",
-                          reason=("本轮未取得任何个人信息取值，"
+                          reason=("本轮在同意之前未取得任何个人信息取值，"
                                   "无法认定「已实际取得个人信息」，也无法认定「未取得」%s"
                                   % ("；本档位不执行同意动作与界面遍历，"
                                      "未触发的路径不在结论范围内" if _absent else "")),
                           facts=_nt_facts)
+        # ★ 三条用户口径的收尾（2026-11-18 / 11-19），顺序不能反：
+        #   ① 先合并"同意前索权"：它可能把 Q003 从 PASS / 未测 改成"发现问题"；
+        #   ② 再补"尝试获取未成功"：只往事实表加一行，绝不改状态；
+        #   ③ 最后补"同一交互内采集"：同样只加事实行，绝不改状态。
+        self._merge_pre_consent_perms()
+        self._append_p1_attempts(pre)
+        # ③ 最后补"同意点击后同一交互内的采集"：只往事实表加一行，绝不改状态。
+        #    放在最后是因为前两步可能把 Q003 改成"发现问题"，而这一行无论如何
+        #    都要出现 —— 报告不能因为"已经判了违规"就把其余现象省略掉。
+        self._append_consent_sync()
         self._end(pr, M.PHASE_DONE)
         return pr
 
@@ -3295,16 +3499,18 @@ class FlowRunner:
                                    "、".join("%s(%s)" % (s.get("perm") or "未知",
                                                          s.get("purpose") or "证据不足")
                                             for s in self.fr.perm_scenes[:8]), "P4")])
-            # 未同意阶段就申请权限：不进 Q026 的结论（它判的是"有没有说明目的"），
-            # 但作为事实挂到 Q012（提前索权）上，供人工判断该权限是否与当前功能相关。
-            _pre = [s for s in self.fr.perm_scenes if s.get("phase") == "P1"]
+            # 未同意阶段就申请权限：按用户 2026-11-18 口径并入 Q003 认定，
+            # 这里只留一行指引。不能再把同一行为写成 Q012 的一行事实 ——
+            # Q012 判的是"权限与当前功能是否匹配"，把时间维度塞进去会让
+            # 同一件事在两个问题项下各出现一次，复核员无法判断以哪个为准。
+            _pre = CMP.pre_consent_perm_requests(
+                self.fr.perm_scenes or [],
+                getattr(self.scan, "events", None))
             if _pre:
                 self._item("Q012").facts.append([
-                    "未同意阶段即申请权限",
-                    "、".join("%s（冷启动第 %.0f 秒）"
-                              % (s.get("perm") or "未知",
-                                 float(s.get("at_ms") or 0) / 1000.0)
-                              for s in _pre[:6])])
+                    "未同意阶段的权限申请",
+                    "已并入 Q003「未经用户同意收集使用个人信息」认定，"
+                    "本项不重复判定（本项只判权限与当前功能是否匹配）"])
             self.log("[流程]    权限申请场景 %d 个（已说明目的 %d、未说明 %d、证据不足 %d）→ %s"
                      % (len(self.fr.perm_scenes), j["stats"].get("explained", 0),
                         j["stats"].get("silent", 0), j["stats"].get("unclear", 0),

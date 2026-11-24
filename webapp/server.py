@@ -67,8 +67,8 @@ def _as_bool(v) -> bool:
 # 而这份映射只有六个词，重复写一遍比多一条运行期依赖划算。
 _DEPTH_ALIAS = {
     "standard": "normal", "quick": "normal", "fast": "normal",
-    "1": "pre", "2": "light", "3": "deep", "4": "extreme",
-    "shallow": "light", "full": "extreme", "max": "extreme",
+    "1": "pre", "2": "light", "3": "deep", "4": "deep",
+    "extreme": "deep", "shallow": "light", "full": "deep", "max": "deep",
 }
 
 
@@ -215,16 +215,18 @@ def _default_login_phone_for(device: str = "", cfg_path: Optional[str] = None) -
 def _norm_depth(raw: Any) -> str:
     """检测深度档位规范化。未知值退回 normal。
 
-    四档口径（2026-10-31）：pre / light / deep / extreme。
+    三档口径（2026-11-19）：pre / light / deep。
     normal 仍接受 —— 历史任务与老调用方写的就是它，直接判非法会让重跑失败。
+    旧写法 "4" 与 "extreme" 归一到 deep（用户按旧习惯选 4 档，要的正是
+    "尽量走全功能"）；旧的 "3"（15 分钟深度档）同样归一到 deep。
 
     为什么不报错：档位是"多花点时间"的旋钮，填错一个词不该让任务提交失败。
-    但也不能猜成 deep —— 那会把一份十几分钟的检测当成用户没要求过。
+    但也不能猜成 deep —— 那会把一份一小时的检测当成用户没要求过。
     """
     v = str(raw or "").strip().lower()
     if v in _DEPTH_ALIAS:
         v = _DEPTH_ALIAS[v]
-    return v if v in ("pre", "light", "normal", "deep", "extreme") else "normal"
+    return v if v in ("pre", "light", "normal", "deep") else "normal"
 
 
 def _file_stem(job: Dict[str, Any], suffix: str) -> str:
@@ -4010,6 +4012,16 @@ class Watchdog(threading.Thread):
     ★ 仍然不按"慢"判死
       判据只有"多久没有任何日志/进度"，与阶段、百分比无关 ——
       遍历天然是"数字慢慢爬、日志一直在刷"，那种任务不会被误伤。
+      唯一例外是"墙钟上限"（见 `wall_cap_s`）：跑过预算的 2 倍还多 30 分钟，
+      无论有没有日志都强制收工。它挡的是"一直在动却永远走不完"。
+
+    ★ 它自己也出过盲区（2026-11-23 海滨城，真机实测）
+      这条任务跑了 110 分钟、85 分钟零日志、用户 16:45 点停止无效、17:06 重启
+      服务才结束。原因不是判据不灵，是**它根本没看这条任务**：sweep 当时用
+      `db.list(30)`（按 created_at 倒序取 30 条），而一次批量提交了 42 个 App，
+      正在跑的恰好是最早创建的那条 —— 名次第 42，不在前 30 里。
+      现在改用 `db.list_running()`（不分页）。教训写在这里，是因为这个 bug
+      在"小批量手测"时永远不出现，只有批量跑才会全套失效。
     """
 
     POLL_S = 15
@@ -4021,6 +4033,27 @@ class Watchdog(threading.Thread):
     CANCEL_QUIET_S = 45    # 已请求停止，且 45 秒没有任何日志 → 判定卡死
     HARD_S = 300           # 强制后再等 5 分钟仍无响应 → 硬收尾
     REPEAT_S = 300         # 同一任务最多每 5 分钟提醒一次，避免刷屏
+    # ---------------------------------------------------------------- 墙钟上限
+    # ★ 为什么除了"零输出"还要有"太久"（2026-11-23 海滨城）
+    #   零输出判据抓的是"卡住不动"，抓不到"一直在动却永远走不完"
+    #   （重试循环、日志刷屏、反复重新附着）。那天更糟的是看门狗连这条任务
+    #   都没看见，于是两种判据都失效。这里补一条绝对上限：跑过上限就强制收工，
+    #   与阶段、日志量无关。
+    #   正常一轮 = 首轮采集 + 复现轮（再来一遍）+ 卸载出报告，预算 ×2 + 30 分
+    #   足够宽：1 档 420 秒 → 44 分钟；3 档 3600 秒 → 2 小时 30 分。
+    WALL_FACTOR = 2
+    WALL_GRACE_S = 1800
+
+    @classmethod
+    def wall_cap_s(cls, job: Dict[str, Any]) -> int:
+        """这条任务的墙钟上限（秒）。预算缺失时按 3600 秒算，宁可宽也不误杀。"""
+        try:
+            dur = int(job.get("duration") or 0)
+        except Exception:
+            dur = 0
+        if dur <= 0:
+            dur = 3600
+        return dur * cls.WALL_FACTOR + cls.WALL_GRACE_S
 
     def __init__(self, db: JobDB, worker: Optional["Worker"] = None):
         super().__init__(daemon=True, name="piiscan-watchdog")
@@ -4098,8 +4131,14 @@ class Watchdog(threading.Thread):
 
     def sweep(self) -> None:
         """走一遍所有在跑的任务，按规则提醒 / 强制收工。"""
+        # ★ 只能用不分页的 list_running()（2026-11-23 事故）
+        #   原来这里调 `db.list(30)`，它是 `ORDER BY created_at DESC LIMIT 30`。
+        #   用户一次提交 42 个 App，正在跑的恰好是最早创建的那条 —— 名次第 42，
+        #   不在前 30 里，于是看门狗**从头到尾没看过这条任务**：
+        #   110 分钟里一条提醒没写、一次强制收工没做，用户点停止也无人代劳，
+        #   最后只能重启服务。批次一旦超过 30 条，"最后一道防线"就是假的。
         try:
-            jobs = self.db.list(30)
+            jobs = self.db.list_running()
         except Exception:
             return
         now = time.time()
@@ -4129,6 +4168,25 @@ class Watchdog(threading.Thread):
                     self._force(
                         j, "已请求停止，但连续 %d 秒没有任何日志"
                            "（线程卡在设备调用里）" % stall)
+                continue
+
+            # ---- 跑得太久（与有没有日志无关）→ 强制收工 ----
+            try:
+                elapsed = now - float(j.get("started_at") or now)
+            except Exception:
+                elapsed = 0.0
+            cap = self.wall_cap_s(j)
+            # 等设备的时间不算：`started_at` 在"从队列取到"时就写了，而拿到
+            # 设备独占权之前一行采集都没跑（另一个实例可能在跑两个小时）。
+            # 把这段算进上限，会让排在后面的任务一开工就被强制收工。
+            _waiting = str(j.get("stage") or "").startswith("等待设备")
+            if not _waiting and elapsed > cap:
+                self._force(
+                    j, "已连续运行 %d 分钟，超过本档上限 %d 分钟"
+                       "（预算 %s 秒 ×%d + %d 分钟宽限），采集线程未按预算收工"
+                       % (elapsed // 60, cap // 60,
+                          int(j.get("duration") or 0), self.WALL_FACTOR,
+                          self.WALL_GRACE_S // 60))
                 continue
 
             if stall < self.STALL_S:

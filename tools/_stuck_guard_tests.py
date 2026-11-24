@@ -25,6 +25,7 @@ def run(check):
     _t_probe_no_su(check)
     _t_root_verified(check)
     _t_watchdog(check)
+    _t_paging_blind_spot(check)
 
 
 # ---------------------------------------------------------------- RPC 超时
@@ -202,9 +203,16 @@ def _t_watchdog(check):
             self.jobs = jobs
             self.logs = []
             self.updates = []
+            self.list_calls = 0
 
         def list(self, n=100):
+            # 界面翻页用的分页查询。看门狗**不许**用它 ——
+            # 2026-11-23 海滨城事故就是被这个 LIMIT 30 挡在门外 110 分钟。
+            self.list_calls += 1
             return self.jobs
+
+        def list_running(self):
+            return [j for j in self.jobs if j.get("status") == "running"]
 
         def append_log(self, jid, msg, live=True):
             self.logs.append((jid, msg, live))
@@ -224,9 +232,10 @@ def _t_watchdog(check):
             self.forced[jid] = reason
             self.calls.append((jid, reason))
 
-    def job(jid, stall, req=""):
-        return {"id": jid, "status": "running", "stall": stall, "req": req,
-                "stage": "界面遍历", "progress": 55}
+    def job(jid, stall, req="", elapsed=120, duration=420, status="running"):
+        return {"id": jid, "status": status, "stall": stall, "req": req,
+                "stage": "界面遍历", "progress": 55,
+                "started_at": now - elapsed, "duration": duration}
 
     # ---- 1. 只是"慢"：10 分钟零输出 → 只提醒，不强制 ----
     db = FakeDB([job("J-slow", S.Watchdog.STALL_S + 30)])
@@ -286,3 +295,80 @@ def _t_watchdog(check):
     check("卡死提醒里能抓到工作线程调用栈",
           "piiscan-worker" in stack and "_work" in stack, stack[:200])
     th.join(timeout=4)
+
+    # ---- 6. 批量场景：任务排在第 42 位（分页取不到）也必须被看见 ----
+    #         2026-11-23 海滨城：一次提交 42 个 App，正在跑的恰是最早创建的
+    #         那条，`list(30)` 里没有它 → 看门狗 110 分钟毫无动作。
+    db6 = FakeDB([job("J-batch", S.Watchdog.FORCE_S + 60)])
+    w6 = FakeWorker()
+    wd6 = S.Watchdog(db6, w6)
+    wd6.sweep()
+    check("批量任务（不在前 30 条）零输出 20 分钟 → 照样强制收工",
+          bool(w6.calls) and w6.calls[0][0] == "J-batch", w6.calls)
+    check("看门狗不再用分页查询做死活判断", db6.list_calls == 0, db6.list_calls)
+
+    # ---- 7. 墙钟上限：日志还在刷（stall=0）也要能收工 ----
+    cap = S.Watchdog.wall_cap_s({"duration": 420})
+    check("墙钟上限 = 预算×2 + 30 分钟", cap == 420 * 2 + 1800, cap)
+    db7 = FakeDB([job("J-long", 0, elapsed=cap + 60)])
+    w7 = FakeWorker()
+    S.Watchdog(db7, w7).sweep()
+    check("跑过墙钟上限 → 强制收工（与有没有日志无关）",
+          bool(w7.calls) and "上限" in w7.calls[0][1], w7.calls)
+    db7b = FakeDB([job("J-ok", 0, elapsed=cap - 600)])
+    w7b = FakeWorker()
+    S.Watchdog(db7b, w7b).sweep()
+    check("未到墙钟上限、日志在刷 → 不动它", not w7b.calls, w7b.calls)
+    # 排队等设备的时间不算进上限：这段时间一行采集都没跑。
+    j_wait = job("J-wait", 0, elapsed=cap + 3600)
+    j_wait["stage"] = "等待设备（另一任务在跑）"
+    db7c = FakeDB([j_wait])
+    w7c = FakeWorker()
+    S.Watchdog(db7c, w7c).sweep()
+    check("等设备等了两小时也不按墙钟上限收工", not w7c.calls, w7c.calls)
+
+    # ---- 8. 心跳为 NULL 的运行中任务不能算"刚活过" ----
+    from webapp.db import _stall_of
+    check("心跳缺失时按开始时间算 stall（不返回 0）",
+          _stall_of({"status": "running", "started_at": now - 900}, None, now) >= 899,
+          _stall_of({"status": "running", "started_at": now - 900}, None, now))
+    check("非运行状态 stall 恒为 0",
+          _stall_of({"status": "done", "started_at": now - 900}, None, now) == 0)
+
+
+def _t_paging_blind_spot(check):
+    """分页当控制面的盲区：批量提交时正在跑的那条会掉出前 N 条。
+
+    2026-11-23 海滨城（真机）：一次提交 42 个 App，正在跑的是**最早创建**
+    的那条 → 在 `created_at DESC` 里排第 42 → `list(30)` 里没有它 →
+    看门狗 85 分钟没写一句提醒、没做一次强制收工，用户点停止也无人代劳，
+    最后只能重启服务。
+
+    这里用**真的 JobDB**（临时目录）复现那个形状：35 条任务、最老的那条
+    running。钉住两件事：① 列表接口必须把它带出来；② list_running 必须
+    不分页地返回它。
+    """
+    import tempfile
+    from pathlib import Path
+    from webapp.db import JobDB
+
+    db = JobDB(Path(tempfile.mkdtemp(prefix="paging_")) / "jobs.db")
+    first = db.create(source="apk", apk_name="a.apk", duration=420)
+    for i in range(34):
+        db.create(source="apk", apk_name="b%d.apk" % i, duration=420)
+    # 让最老的那条变成 running（模拟"批次里第一条正在跑"）
+    db.update(first, status="running", stage="复现采集", progress=89)
+
+    page = db.list(30)
+    check("列表分页仍按创建时间倒序（最新在前）",
+          page[0]["created_at"] >= page[-1]["created_at"], len(page))
+    check("正在跑的任务即使排在第 35 位也出现在列表里",
+          any(j["id"] == first for j in page), len(page))
+    check("它的 stall 是真实秒数而不是 0",
+          [j for j in page if j["id"] == first][0]["stall"] >= 0, page[0].get("stall"))
+
+    run_only = db.list_running()
+    check("list_running 返回全部在跑任务（不受分页影响）",
+          [j["id"] for j in run_only] == [first], run_only)
+    check("list_running 带 duration（墙钟上限要用）",
+          int(run_only[0].get("duration") or 0) == 420, run_only[0])

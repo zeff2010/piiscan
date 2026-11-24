@@ -377,6 +377,123 @@ def _danger_group(name: str) -> str:
     short = name.rsplit(".", 1)[-1]
     return DANGEROUS_PERMS.get(short, "")
 
+
+# ---------------------------------------------------------------------------
+# 「可采集个人信息的权限」—— 用户 2026-11-18 口径
+#
+# 只算**系统弹窗向用户索要、且该权限对应可采集的个人信息**这几类（定位、
+# 存储、相机……）。两条明确的排除：
+#   · 「通知」：推送权限不采集任何个人信息（POST_NOTIFICATIONS 在危险权限
+#     表里，但不该进这张表）；
+#   · 写剪贴板：它不弹窗、也不采集个人信息，用户明确说不算问题。
+# 特殊权限（无障碍 / 录屏 / 通知使用权）走的是「设置页开关」而不是权限弹窗，
+# 不属于本条口径的范围，由别的检测项负责。
+# ---------------------------------------------------------------------------
+PII_PERM_GROUPS = frozenset({
+    "位置", "存储", "相机", "麦克风", "通讯录", "电话", "通话记录",
+    "短信", "日历", "身体传感器", "活动识别", "蓝牙", "附近设备",
+    "媒体位置", "超宽带",
+})
+
+# 弹窗文字识别出来的组名与 DANGEROUS_PERMS 的组名不是同一套：`uiwalk.PERM_LABELS`
+# 直接返回弹窗里命中的那个词（"位置信息""拍摄照片和视频"），所以必须逐个映射，
+# 少一个就会整类漏判 —— 这类"看起来在跑、其实一条都没命中"的错最难发现。
+_PERM_GROUP_ALIAS = {
+    "位置信息": "位置", "定位信息": "位置", "定位": "位置",
+    "地理位置": "位置", "位置": "位置",
+    "照片": "存储", "照片和视频": "存储", "媒体": "存储",
+    "文件": "存储", "存储": "存储",
+    "拍摄照片和视频": "相机", "摄像": "相机",
+    "录音": "麦克风", "联系人": "通讯录",
+    "通话": "电话", "身体活动": "活动识别", "身体": "身体传感器",
+}
+
+
+def norm_perm_group(g: str) -> str:
+    """把弹窗识别出的组名归一到 PII_PERM_GROUPS 的键上。"""
+    s = (g or "").strip()
+    return _PERM_GROUP_ALIAS.get(s, s)
+
+
+_PERM_NAME_RE = re.compile(r"android\.permission\.[A-Z_]+")
+
+
+def _perm_names_near(events: Optional[Iterable[Any]], at_ms: Any,
+                     tol_ms: int = 3000) -> List[str]:
+    """同一时段的 `requestPermissions` 事件里带出的权限全名。
+
+    ★ 为什么需要这层兜底：`perm_scenes` 的权限名是从**弹窗文字**猜出来的
+      （"读写设备上的照片及文件"→存储）。部分 ROM 的弹窗只有短文案甚至只有
+      图标，读不出组名，这条索权就判不出来 —— 而 hook 侧的事件里 `args`
+      带的是完整权限名（`android.permission.ACCESS_FINE_LOCATION|…`）。
+      两侧时刻都相对采集开始，按 ±3 秒配对即可，不必求精确相等。
+    """
+    if not events or at_ms is None:
+        return []
+    out: List[str] = []
+    try:
+        at = int(at_ms)
+    except Exception:
+        return []
+    for e in events:
+        if getattr(e, "noise", ""):
+            continue
+        api = (getattr(e, "api", "") or "")
+        if "requestPermissions" not in api and getattr(e, "signal", "") != "S069":
+            continue
+        em = getattr(e, "elapsed_ms", None)
+        if em is None or abs(int(em) - at) > tol_ms:
+            continue
+        for nm in _PERM_NAME_RE.findall(getattr(e, "args", "") or ""):
+            if nm not in out:
+                out.append(nm)
+    return out
+
+
+def pre_consent_perm_requests(scenes: Iterable[Any],
+                              events: Optional[Iterable[Any]] = None
+                              ) -> List[Dict[str, Any]]:
+    """未同意阶段（phase=P1）向用户索要「可采集个人信息的权限」的系统弹窗。
+
+    ★ 用户 2026-11-18 口径（第 1/3 条）：同意前索要这类权限的行为，并入
+      Q003「未经用户同意收集使用个人信息」；只认**系统弹窗**这一种形态。
+
+    为什么要用 `app_before` 而不是现成的 `evidable`：权限弹窗一出现，窗口
+    焦点必然离开被测应用，`evidable`（要求应用明确在前台）会把**每一条**都
+    判成"不能当证据"。正确的判据是弹窗出现**之前**应用是否在前台 ——
+    采集侧为此新增 `app_before`：
+      · True  → 索权事实成立；
+      · False → 弹窗前应用就不在前台，多半是系统残留，不认；
+      · None  → 未确认（旧存档没有这个字段），保留但降级为"证据待补"。
+    """
+    out: List[Dict[str, Any]] = []
+    for s in scenes or []:
+        if not isinstance(s, dict):
+            continue
+        if str(s.get("phase") or "") != "P1":
+            continue
+        if s.get("app_before") is False:
+            continue
+        # 旧字段兜底：明确记录了"弹窗时应用不在前台"、又没有 app_before 佐证
+        if s.get("app_before") is None and s.get("off_app") is True:
+            continue
+        g = norm_perm_group(str(s.get("perm") or ""))
+        if g not in PII_PERM_GROUPS:
+            # 弹窗文字没给出组名：用同时段 hook 事件里的权限全名补
+            _gs = []
+            for nm in _perm_names_near(events, s.get("at_ms")):
+                _g = _danger_group(nm)
+                if _g and _g in PII_PERM_GROUPS and _g not in _gs:
+                    _gs.append(_g)
+            if not _gs:
+                continue
+            s = dict(s)
+            s["perm"] = _gs[0]
+            s["perm_source"] = "hook"
+        out.append(s)
+    return out
+
+
 # 光看返回值的形态也能定：16 位十六进制几乎只可能是 Android ID。
 # 15 位纯数字且能通过 Luhn 校验的是 IMEI（拿不到校验就只按长度判，
 # 并在名称后标注"形态推断"，不冒充确证）。
@@ -656,7 +773,8 @@ def collected_facts(collected: Dict[str, Dict[str, Any]],
 def event_pi(e: Any, idx: Optional[Dict[str, Dict[str, Any]]] = None,
              vocab: Optional[Dict[str, Dict[str, Any]]] = None,
              sm: Optional[Dict[str, Any]] = None,
-             device_ids: Optional[Dict[str, Any]] = None
+             device_ids: Optional[Dict[str, Any]] = None,
+             require_value: bool = True
              ) -> Tuple[str, str, Optional[Dict[str, Any]]]:
     """单条事件 → (个人信息类型 id, 具体成员名, 命中的 signal)。
 
@@ -671,7 +789,8 @@ def event_pi(e: Any, idx: Optional[Dict[str, Dict[str, Any]]] = None,
         return "", "", None
     if _is_sink(e):
         return "", "", None
-    if not _valid_value(getattr(e, "result", ""), getattr(e, "api", "")):
+    if require_value and not _valid_value(getattr(e, "result", ""),
+                                          getattr(e, "api", "")):
         return "", "", None
     sm = sm or _signal_map()
     idx = idx if idx is not None else build_signal_index(sm)
@@ -788,6 +907,100 @@ def collected_types(events: Iterable[Any],
             ((k, v) for k, v in r["members"].items()),
             key=lambda kv: -kv[1]["count"]))
     return out
+
+
+def _attempt_reason(res: str, api: str = "") -> str:
+    """为什么这次调用没算成「取到值」。报告里要写人话，不能只写「失败」。"""
+    r = (res or "").strip()
+    if r.startswith("调用被拒绝"):
+        return r[:80]                 # 采集侧已写成「调用被拒绝：<异常名>」
+    if not r:
+        return "取值为空"
+    if r.startswith("[object") or r.startswith("[java."):
+        return "返回对象/列表，无法展开为具体取值"
+    tail = (api or "").split(".")[-1]
+    if tail in _OPAQUE_APIS:
+        return "该接口只返回对象/列表，无法展开为具体取值"
+    if r.lower() in _INVALID_RESULTS:
+        if r == "02:00:00:00:00:00":
+            return "系统返回固定假值（Android 6 起不再向应用提供真实 MAC）"
+        if r == "00000000-0000-0000-0000-000000000000":
+            return "系统返回全零值"
+        return "系统返回无效值「%s」" % r[:24]
+    return "取值未通过有效性校验"
+
+
+def attempted_types(events: Iterable[Any],
+                    sm: Optional[Dict[str, Any]] = None,
+                    device_ids: Optional[Dict[str, Any]] = None
+                    ) -> Dict[str, Dict[str, Any]]:
+    """尝试获取、但**没有取到有效值**的个人信息类型。
+
+    ★ 用户 2026-11-18 口径（第 4 条）：这类行为要写进报告、明确标注「未成功」、
+      但**不算违规**。两头都不能丢：
+
+      · 不写 → 「App 尝试读 IMEI、被系统拒绝」这件事在报告里完全消失，
+        复核员会以为它压根没试过；
+      · 写成违规 → 那是最典型的假话。Android 10 起读 IMEI 必然抛
+        SecurityException，任何 App 都会"失败"，据此定罪等于人人都违规。
+
+    所以它不进 `collected_types`（不进认定），单独成一张表挂到事实里。
+    与 `collected_types` 的差异只有一条：不走四级漏斗的第②级（取值有效性），
+    专门收被它挡掉的那批；噪声与外发去向仍由 `event_pi` 统一剔除。
+    """
+    sm = sm or _signal_map()
+    idx = build_signal_index(sm)
+    vocab = {v["id"]: v for v in pi_vocab(sm)}
+    out: Dict[str, Dict[str, Any]] = {}
+    for e in events:
+        # 取到值的属于"收集"，由 collected_types 负责，这里不重复统计。
+        if _valid_value(getattr(e, "result", ""), getattr(e, "api", "")):
+            continue
+        pid, _mem, _sg = event_pi(e, idx, vocab, sm, device_ids,
+                                  require_value=False)
+        if not pid:
+            continue
+        _api = getattr(e, "api", "") or ""
+        _why = _attempt_reason(getattr(e, "result", ""), _api)
+        # ★ 返回对象/列表**不是**"失败"（2026-11-18 真机数据核对）：那是采集侧
+        #   展开不了，App 很可能已经把对象拿到手了。写成"尝试获取未成功"会让
+        #   读者以为它没拿到，方向正好相反 —— 实测有 8 份存档因此冒出
+        #   153 条"未成功"，其中 115 条是 getSensorList / getRunningAppProcesses。
+        #   这类留在「另见接口调用（未取得取值）」里，不冒充尝试失败。
+        if "无法展开" in _why:
+            continue
+        rec = out.setdefault(pid, {
+            "pi": pid, "name": vocab[pid]["name"], "count": 0,
+            "apis": [], "reasons": [], "at_ms": [], "samples": [],
+        })
+        rec["count"] += 1
+        if _api and _api not in rec["apis"] and len(rec["apis"]) < 4:
+            rec["apis"].append(_api)
+        if _why not in rec["reasons"] and len(rec["reasons"]) < 3:
+            rec["reasons"].append(_why)
+        _ms = getattr(e, "elapsed_ms", None)
+        if _ms is not None and len(rec["at_ms"]) < 3:
+            rec["at_ms"].append(int(_ms))
+        if len(rec["samples"]) < 2:
+            rec["samples"].append({
+                "api": _api,
+                "args": (getattr(e, "args", "") or "")[:80],
+                "result": (getattr(e, "result", "") or "")[:80],
+                "reason": _why,
+            })
+    return out
+
+
+def describe_attempted(attempted: Dict[str, Dict[str, Any]],
+                       limit: int = 6) -> str:
+    """把「尝试获取但未成功」写成一句可直接放进事实表的话。"""
+    if not attempted:
+        return ""
+    bits = []
+    for r in sorted(attempted.values(), key=lambda x: -x["count"])[:limit]:
+        _why = r["reasons"][0] if r["reasons"] else "未取到有效值"
+        bits.append("%s（%d 次，%s）" % (r["name"], r["count"], _why))
+    return "、".join(bits)
 
 
 def describe_collected(collected: Dict[str, Dict[str, Any]],

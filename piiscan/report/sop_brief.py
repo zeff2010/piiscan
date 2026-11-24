@@ -42,7 +42,7 @@ _TPL = Path(__file__).with_name("sop_template.html")
 # 整段不贴图；v7 结论区加一行「本轮检测范围」，写明未同意状态下点了几次、
 # 经过几屏、是否因「拒绝」退出）之后，
 # 旧文件必须重出，否则用户点下载拿到的还是旧版本。
-BRIEF_VERSION = "7"
+BRIEF_VERSION = "9"
 BRIEF_MARKER = "<!-- piiscan-brief:%s -->" % BRIEF_VERSION
 
 # 要剔除的四类内容（都属于"怎么得到的 / 依据什么判"，属于内部底稿）：
@@ -467,12 +467,24 @@ def _scope_line(data: Dict[str, Any]) -> str:
       所以简版（对外那份）也要有这一行：它不谈合规结论，只交代检测动作。
     """
     pe = data.get("pre_explore") or {}
+    ps = data.get("pre_settle") or {}
     depth = str(data.get("depth") or "")
-    label = {"pre": "1 档（仅同意前）", "light": "2 档", "deep": "3 档",
-             "extreme": "4 档", "normal": "自定义"}.get(depth, "")
+    # 2026-11-19 三档：pre / light / deep。extreme 是旧存档里的 4 档，
+    # 现在归到 3 档（同 3600 秒预算），否则旧任务重渲染会露出英文档位名。
+    label = {"pre": "1 档（仅同意前）", "light": "2 档（二级菜单）",
+             "deep": "3 档（全功能）", "extreme": "3 档（全功能，旧 4 档存档）",
+             "normal": "自定义"}.get(depth, "")
     bits: List[str] = []
     if label:
         bits.append("检测档位：%s" % label)
+    # ★ 静置秒数必须单独写出来（2026-11-18）。1 档的采集多半发生在"我们没动手"
+    #   的那段时间里，而报告以前只写"点了几次"——于是"在弹窗上守着 65 秒，
+    #   App 一次网络请求都没发"与"压根没等"在纸面上长得一模一样。
+    _set = float(ps.get("seconds") or 0)
+    if _set >= 5:
+        _bt = ps.get("body_tap") or {}
+        bits.append("未同意状态静置观测 %.0f 秒%s"
+                    % (_set, "（含一次政策正文阅读点击）" if _bt else ""))
     if pe:
         taps = int(pe.get("taps") or 0)
         screens = int(pe.get("screens") or 0)
@@ -492,6 +504,32 @@ def _scope_line(data: Dict[str, Any]) -> str:
         esc = int(pe.get("escapes") or 0)
         if esc:
             bits.append("有 %d 次界面已不属于被测应用（已退回、不计入触发）" % esc)
+        # ★ 1 档不点同意，必须说清"哪里没测到"（2026-11-18 驿站助手实测）：
+        #   它把整套 SDK 初始化（含读 Android ID）挂在「同意」按钮的 onClick 里，
+        #   不点同意就一行都不执行。报告若不写这句，"未观测到同意前收集"
+        #   会被读成"这个 App 干净"，而事实是"这一段动作根本没发生"。
+        bits.append("本轮不执行同意动作：同意之后才会发生的初始化与收集，"
+                    "不在本轮观测范围内（需 2 档以上对照）")
+    # ★ 同意边界复核的结果要写进这一行（2026-11-18）：点击「同意」的回调里
+    #   App 常同步初始化 SDK、读设备标识。这些事件被算成"同意前收集"就是
+    #   一条假违规 —— 实测驿站助手 88 条事件里有 68 条属于这一类，
+    #   而它们全部发生在 `input tap` 之后的 1 秒内。
+    _sync = int(data.get("consent_sync_events") or 0)
+    if _sync:
+        # ★ 带上"具体采了什么"（2026-11-19）：只写条数时，读者仍不知道
+        #   点击后那 1.5 秒里到底发生了什么，容易把这句读成"只是噪声"。
+        _sy = str(data.get("consent_sync_summary") or "")
+        bits.append("其中 %d 条事件与「同意」点击属于同一交互（点击后 1.5 秒内%s），"
+                    "按同意动作本身处理，不计为同意前收集"
+                    % (_sync, ("：" + _sy) if _sy else ""))
+    # ★ 「试过但没成功」也要写（2026-11-18 用户口径第 4 条）：不写的话，
+    #   "未收集 IMEI"会被读成"压根没试过"；而 App 其实调了接口、被系统拒了。
+    #   写上，但不计入违规 —— 这两件事必须同时成立。
+    _att = data.get("p1_attempted") or {}
+    _n_att = int(_att.get("count") or 0)
+    if _n_att:
+        bits.append("另有 %d 次接口调用未取到有效值（%s），已记录但不算违规"
+                    % (_n_att, _att.get("text") or ""))
     if not bits:
         return ""
     return "".join(["<p class='muted'>本轮检测范围：", _esc("；".join(bits)), "。</p>"])

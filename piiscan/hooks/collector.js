@@ -920,6 +920,43 @@ Java.perform(function () {
     } catch (e) { /* 类不存在属正常（不同 support 库版本） */ }
   });
 
+  /* Fragment 的权限申请（2026-11-18 补）。
+     Activity / ActivityCompat 那一路看不到 Fragment 上的申请，而它在老代码里
+     很常见（「我的」页里的相机 / 定位申请）。它同样会弹系统权限框，所以
+     「同意前索权」要能看到调用栈与权限名 —— 判定口径由 Python 侧统一处理，
+     这里只补事实来源，不代点。 */
+  ['androidx.fragment.app.Fragment', 'android.app.Fragment'].forEach(function (cn) {
+    try {
+      var CF = Java.use(cn);
+      if (!CF.requestPermissions) return;
+      CF.requestPermissions.overloads.forEach(function (ov) {
+        ov.implementation = function () {
+          var args = Array.prototype.slice.call(arguments);
+          var ret = ov.apply(this, args);
+          try {
+            var perms = '';
+            for (var i = 0; i < args.length; i++) {
+              var a = args[i];
+              if (a && a.$className && a.$className.indexOf('[') >= 0) {
+                try {
+                  var n = a.length;
+                  var arr = [];
+                  for (var j = 0; j < n; j++) arr.push(String(a[j]));
+                  perms = arr.join('|');
+                } catch (e2) {}
+              }
+            }
+            emit('perm_request', 'permission', shortName(cn) + '.requestPermissions',
+                 perms || formatArgs(args), sanitize(ret),
+                 { signal: 'S069', group: '权限', pi: '权限申请', evidence: 'C', stackGuard: false });
+          } catch (e) {}
+          return ret;
+        };
+      });
+      installed.push('perm_request_' + cn + ' — requestPermissions');
+    } catch (e) { /* 类不存在属正常（Fragment 不一定在包里） */ }
+  });
+
   /* ---------------- 10. 数据去向：网络上报（漏斗第 4 级） ---------------- */
   var SINK_NET = { group: '网络信息', pi: '外发数据', sink: 'K1', evidence: 'C' };
 

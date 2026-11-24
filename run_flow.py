@@ -53,7 +53,7 @@ def main() -> int:
                     help="expert=按阶段走；checklist=按报告项逐项走")
     ap.add_argument("--repro", action="store_true", help="跑 P7 复现确认（需额外一轮采集）")
     ap.add_argument("--deep", action="store_true",
-                    help="深度检测档（约 15 分钟采集：翻深层菜单、事件上限提高 5 倍、截图 60 张）")
+                    help="深度检测档（约 60 分钟采集：层级不限、可登录、事件上限 40k、截图 160 张）")
     ap.add_argument("-c", "--config", default="config.yaml", help="配置文件路径")
     ap.add_argument("--ai-ui-agent", action="store_true", help="开启「AI 指挥 UI 遍历」")
     ap.add_argument("--ai-every", type=int, default=0,

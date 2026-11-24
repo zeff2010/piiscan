@@ -146,3 +146,209 @@ def run(check):
     # 只有证据不足 → 未测，不能写"未告知"
     r6 = PERM.judge([_scene(pre_text="")])
     check("汇总：证据不足 → 未测而非疑似", r6["state"] == M.NOT_TESTED, r6["state"])
+
+    # -------------------------------------------- 同意前索权（2026-11-18 口径）
+    from piiscan.flow import compare as CMP
+
+    # 组名归一必须覆盖 uiwalk 可能返回的**每一个**词。漏一个就是整类漏判，
+    # 而且屏幕上看不出异常（报告只是"未发现问题"）—— 这种错最难发现。
+    _unmapped = [w for w in uiwalk.PERM_LABELS
+                 if CMP.norm_perm_group(w) not in CMP.PII_PERM_GROUPS
+                 and CMP.norm_perm_group(w) != "通知"]
+    check("索权：PERM_LABELS 每个词都能归到已知组（通知除外）",
+          not _unmapped, _unmapped)
+    check("索权：通知不在「可采集个人信息」集合里",
+          "通知" not in CMP.PII_PERM_GROUPS)
+    check("索权：「位置信息」归到位置", CMP.norm_perm_group("位置信息") == "位置")
+    check("索权：「照片」归到存储", CMP.norm_perm_group("照片") == "存储")
+    check("索权：「拍摄照片和视频」归到相机",
+          CMP.norm_perm_group("拍摄照片和视频") == "相机")
+
+    _sc = [
+        _scene(perm="位置信息", phase="P1", app_before=True),
+        _scene(perm="通知", phase="P1", app_before=True),
+        _scene(perm="相机", phase="P4", app_before=True),
+        _scene(perm="相机", phase="P1", app_before=False),
+        _scene(perm="照片", phase="P1", app_before=None),
+    ]
+    _hits = CMP.pre_consent_perm_requests(_sc)
+    check("索权：只认「同意前 + 可采集个人信息 + 弹窗前在前台」",
+          len(_hits) == 2, [(h["perm"], h.get("app_before")) for h in _hits])
+    check("索权：通知权限不算问题", all(h["perm"] != "通知" for h in _hits))
+    check("索权：同意后的弹窗不算", all(h["phase"] == "P1" for h in _hits))
+    check("索权：弹窗前就不在前台的不认",
+          all(h.get("app_before") is not False for h in _hits))
+
+    # 弹窗读不到权限名时，用同时段的 requestPermissions 事件补齐
+    from types import SimpleNamespace as NS
+    _ev = NS(api="ActivityCompat.requestPermissions", hook_id="perm_request",
+             args="android.permission.ACCESS_FINE_LOCATION", result="null",
+             elapsed_ms=12050, noise="", signal="S069", before_consent=True)
+    _blind = [_scene(perm="", phase="P1", app_before=True, at_ms=12000)]
+    check("索权：弹窗无权限名时用 hook 事件补齐",
+          len(CMP.pre_consent_perm_requests(_blind, [_ev])) == 1)
+    check("索权：事件时刻差得远就不配对",
+          CMP.pre_consent_perm_requests(_blind, [
+              NS(api="ActivityCompat.requestPermissions", hook_id="perm_request",
+                 args="android.permission.ACCESS_FINE_LOCATION", result="null",
+                 elapsed_ms=60000, noise="", signal="S069")]) == [])
+
+    # ---------------------------------------------------- 尝试获取（未成功）
+    check("尝试获取：被系统拒绝要写清原因",
+          "调用被拒绝" in CMP._attempt_reason("调用被拒绝：SecurityException",
+                                              "TelephonyManager.getDeviceId"))
+    check("尝试获取：假 MAC 要写清是系统不给",
+          "假值" in CMP._attempt_reason("02:00:00:00:00:00",
+                                       "WifiInfo.getMacAddress"))
+    check("尝试获取：空值单独说明", CMP._attempt_reason("", "x") == "取值为空")
+    # 返回对象/列表不等于"没拿到"：App 很可能已经拿到，只是采集侧展开不了。
+    # 写成"未成功"方向正好相反（真机数据里 115/153 条属于这一类）。
+    _obj = CMP.attempted_types([
+        NS(api="ActivityManager.getRunningAppProcesses", hook_id="", args="",
+           result="[object Object]", elapsed_ms=1000, before_consent=True,
+           noise="", signal="S054")])
+    check("尝试获取：返回对象的不算「未成功」", _obj == {}, list(_obj))
+
+    _att = CMP.attempted_types([
+        NS(api="TelephonyManager.getDeviceId", hook_id="", args="",
+           result="调用被拒绝：SecurityException", elapsed_ms=5000,
+           before_consent=True, noise="", signal="S012"),
+        NS(api="TelephonyManager.getDeviceId", hook_id="", args="",
+           result="调用被拒绝：SecurityException", elapsed_ms=5100,
+           before_consent=True, noise="", signal="S012"),
+        NS(api="Settings.Secure.getString", hook_id="", args="android_id",
+           result="d85823f5504132c4", elapsed_ms=7000,
+           before_consent=True, noise="", signal="S003"),
+    ])
+    check("尝试获取：只收未取到值的（1 类 2 次）", len(_att) == 1, list(_att))
+    _r = list(_att.values())[0]
+    check("尝试获取：同一类型合并计数", _r["count"] == 2, _r["count"])
+    check("尝试获取：取到值的那条不算尝试",
+          "getString" not in "".join(_r.get("apis") or []), _r.get("apis"))
+    _desc = CMP.describe_attempted(_att)
+    check("尝试获取：描述里带次数与原因",
+          "2 次" in _desc and "拒绝" in _desc, _desc)
+
+    # ------------------------------------------ 取证本身：1 档不代点「允许」
+    # 这是红线：点「允许」等于替用户授权，之后测到的就不是 App 原本的行为。
+    # 用打桩跑一遍真实函数，确认"只取证、不点击"真的成立。
+    import time as _time
+    from piiscan import collector as COLL
+    _tapped = []
+    _o_fg, _o_shot = COLL.app_in_foreground, COLL.capture_screenshot
+    _o_top, _o_tap = uiwalk.top_activity, uiwalk.tap
+    try:
+        COLL.app_in_foreground = lambda *a, **k: False
+        COLL.capture_screenshot = lambda *a, **k: b""
+        uiwalk.top_activity = lambda *a, **k: "com.demo.Main"
+        uiwalk.tap = lambda *a, **k: (_tapped.append(a), True)[1]
+        _res = COLL.ScanResult(package="com.demo")
+        _res.started_at = _time.time()
+        _ok = COLL._capture_perm_dialog(
+            _res, SYS_WITH_PURPOSE, "SERIAL", lambda *_: None,
+            phase="P1", tap_allow=False, app_before=True)
+        _sc = _res.perm_scenes[-1] if _res.perm_scenes else {}
+    finally:
+        COLL.app_in_foreground, COLL.capture_screenshot = _o_fg, _o_shot
+        uiwalk.top_activity, uiwalk.tap = _o_top, _o_tap
+
+    check("权限取证：识别为权限弹窗", _ok is True, _ok)
+    check("权限取证：1 档不代点「允许」（红线）", not _tapped, _tapped)
+    check("权限取证：动作写明未代为作答",
+          "未代为作答" in str(_sc.get("action") or ""), _sc.get("action"))
+    check("权限取证：记下弹窗前应用在前台",
+          _sc.get("app_before") is True, _sc.get("app_before"))
+    check("权限取证：app_before=True → 可当证据（焦点在弹窗上不影响）",
+          _sc.get("evidable") is True, _sc.get("evidable"))
+    check("权限取证：记下权限名", _sc.get("perm") == "位置信息", _sc.get("perm"))
+
+    # ---------------------------- 索权并入 Q003 / 尝试获取写进事实（判定层）
+    from piiscan import collector as COLL
+    from piiscan.flow import sop as SOP
+
+    def _run_p1(**kw):
+        r = SOP.FlowRunner(log=lambda *_: None)
+        sc = COLL.ScanResult(depth="pre", package="com.demo")
+        sc.started_at = 1000.0
+        for k, v in kw.items():
+            setattr(sc, k, v)
+        r.scan = sc
+        r.p1_pre_consent()
+        return r.fr, r.fr.items.get("Q003")
+
+    _pos = {"perm": "位置信息", "phase": "P1", "at_ms": 12400,
+            "app_before": True, "dialog_text": "允许访问位置信息吗？",
+            "action": "未代为作答（本档不点系统权限弹窗）"}
+    _, q3 = _run_p1(perm_scenes=[dict(_pos)])
+    check("Q003：未同意阶段索权 → 发现问题", q3.state == M.FAIL, q3.state)
+    check("Q003：描述写「索要」而不是「已收集」",
+          "索要" in q3.desc and "已实际收集" not in q3.desc, q3.desc[:120])
+    check("Q003：事实表写下索要的权限",
+          any(f[0] == "未同意阶段索要的权限" for f in q3.facts), q3.facts[:3])
+    check("Q003：事实表交代没替用户点允许",
+          any(f[0] == "是否代为作答" and "否" in f[1] for f in q3.facts), q3.facts[:4])
+
+    _, q3_notice = _run_p1(perm_scenes=[{"perm": "通知", "phase": "P1",
+                                         "at_ms": 1000, "app_before": True}])
+    check("Q003：通知权限不改判", q3_notice.state != M.FAIL, q3_notice.state)
+
+    _, q3_off = _run_p1(perm_scenes=[{"perm": "相机", "phase": "P1",
+                                      "at_ms": 5000, "app_before": False}])
+    check("Q003：弹窗前就不在前台的不认", q3_off.state != M.FAIL, q3_off.state)
+
+    _deny = NS(api="TelephonyManager.getDeviceId", hook_id="", args="",
+               result="调用被拒绝：SecurityException", elapsed_ms=5000,
+               before_consent=True, noise="", signal="S012", ts=0)
+    _, q3_att = _run_p1(events=[_deny])
+    check("Q003：尝试获取不改状态（仍为未测）",
+          q3_att.state == M.NOT_TESTED, q3_att.state)
+    check("Q003：尝试获取写进事实表",
+          any("尝试获取但未成功" in f[0] for f in q3_att.facts), q3_att.facts[-1:])
+    check("Q003：事实里写明不计为违规",
+          any("不计为违规" in f[0] for f in q3_att.facts))
+
+    # 只有"非个人信息"的事件（读时区）也算行为事件：PASS 的 facts 必须写真实
+    # 条数，写死 0 就是报告与存档对不上（2026-11-18 真机撞到）。
+    _tz = NS(api="SystemProperties.get", hook_id="", args="persist.sys.timezone",
+             result="Asia/Shanghai", elapsed_ms=900, before_consent=True,
+             noise="", signal="S055", ts=0)
+    _fr2, _q3b = _run_p1(events=[_tz],
+                         pre_explore={"taps": 2, "screens": 3, "perm_dialogs": 0})
+    _q2b = _fr2.items.get("Q002")
+    check("P1：PASS 时事件数按实际写，不写死 0 条",
+          any(f[0] == "同意前事件数" and str(f[1]).startswith("1 条")
+              for f in _q2b.facts), _q2b.facts[:2])
+    check("P1：Q003 有自己的未测原因（不是『缺少阶段 P3 的证据』）",
+          _q3b.state == M.NOT_TESTED and "P3" not in (_q3b.reason or ""),
+          (_q3b.state, (_q3b.reason or "")[:60]))
+
+    # ---------------------------------------------------------------- 同一交互采集
+    # 2026-11-19 用户口径：点击「同意」后 1.5 秒内的采集"记录但不判违规"。
+    # 这一支的真正用途是防"报告看起来什么都没发生"——驿站助手 4 档那一轮
+    # 点击前 1 条、点击后 1.5 秒内 74 条（含读 Android ID），旧报告只写
+    # "未取得任何取值"，与事实相反。
+    _fr3, q3s = _run_p1(
+        consent_sync_events=74,
+        consent_sync_summary="设备标识 3 条、本地留存 41 条、外发数据 2 条",
+        pre_explore={"taps": 2, "screens": 3, "perm_dialogs": 0})
+    _q2s = _fr3.items.get("Q002")
+    check("Q003：同一交互采集写进事实表",
+          any(str(f[0]).startswith("同一交互内采集") for f in q3s.facts), q3s.facts[-2:])
+    check("Q002：同一交互采集也写进事实表",
+          any(str(f[0]).startswith("同一交互内采集") for f in (_q2s.facts or [])),
+          (_q2s.facts or [])[-2:])
+    check("同一交互：写明条数",
+          any("74 条" in str(f[1]) for f in q3s.facts
+              if str(f[0]).startswith("同一交互内采集")), q3s.facts[-1:])
+    check("同一交互：写明不计为同意前",
+          any("不计为「同意前收集」" in str(f[1]) for f in q3s.facts))
+    check("同一交互：带上类型摘要（不能只说条数）",
+          any("设备标识" in str(f[1]) for f in q3s.facts), q3s.facts[-1:])
+    check("同一交互：不改 Q003 状态", q3s.state == M.NOT_TESTED, q3s.state)
+
+    # 没有同一交互事件时不能凭空多出一行
+    _fr4, q3n = _run_p1(events=[_tz],
+                        pre_explore={"taps": 2, "screens": 3, "perm_dialogs": 0})
+    check("同一交互：0 条时不写事实行",
+          not any(str(f[0]).startswith("同一交互内采集") for f in q3n.facts),
+          q3n.facts)

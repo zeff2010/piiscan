@@ -233,6 +233,23 @@ ALLOWED_ACTIONS = {
 MAX_BATCH_DELETE = 200
 
 
+def _stall_of(d: Dict[str, Any], hb: Any, now: float) -> int:
+    """距上次"还活着"的秒数。只对 running 有意义，其余一律 0。
+
+    ★ 心跳缺失时**不能当成"刚刚还活着"**（2026-11-23 事故）
+      旧写法 `int(now - hb) if (status == "running" and hb) else 0`：
+      `heartbeat_at` 为 NULL 时算出来是 0 = 永不卡死，于是一条真正卡住的
+      任务反而被看门狗无条件放过。缺心跳就退回 `started_at`，
+      再缺就退回 `created_at` —— 宁可早一点判"可疑"，也不能漏判。
+    """
+    if d.get("status") != "running":
+        return 0
+    base = hb or d.get("started_at") or d.get("created_at")
+    if not base:
+        return 0
+    return max(0, int(now - float(base)))
+
+
 class JobDB:
     def __init__(self, path: str | Path):
         self.path = str(path)
@@ -464,12 +481,20 @@ class JobDB:
 
     def list(self, limit: int = 100) -> List[Dict[str, Any]]:
         with self._c() as c:
+            # ★ "最新 N 条 + 全部在跑的"（2026-11-23 海滨城）
+            #   纯 `ORDER BY created_at DESC LIMIT ?` 时，批量提交 42 个 App、
+            #   正在跑的是最早创建的那条 —— 它排在 42 位，界面和看门狗都看不见它。
+            #   于是那条任务既没法在列表里点停止，也不会被判卡死。
+            #   正在跑的任务必须**无条件**出现在列表里，不受分页影响。
             rows = c.execute(
                 "SELECT id,created_at,started_at,finished_at,status,stage,progress,"
                 "source,apk_name,apk_url,store_url,apk_size,package,app_label,version_name,"
                 "findings,high,mid,low,checked,skipped,error,req,run_dynamic,"
                 "report_path,heartbeat_at,device "
-                "FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+                "FROM jobs WHERE id IN (SELECT id FROM jobs "
+                "ORDER BY created_at DESC LIMIT ?) "
+                "OR status='running' "
+                "ORDER BY created_at DESC", (limit,)).fetchall()
             # 队列名次（1 = 下一个开跑）。★ 按与 next_queued 完全相同的排序算，
             # 否则界面写"第 1 位"而实际跑的是另一条 —— 置顶这个功能一旦显示不准，
             # 就没人敢用它。
@@ -498,8 +523,36 @@ class JobDB:
             # 距上次进度变化过去了多久（秒）。前端据此在进度条旁标黄，
             # 让"卡住了"这件事在界面上是可见的，而不是靠人盯着时钟猜。
             hb = d.pop("heartbeat_at", None)
-            d["stall"] = int(now - hb) if (d["status"] == "running" and hb) else 0
+            d["stall"] = _stall_of(d, hb, now)
             d["queue_pos"] = qpos.get(d["id"], 0)
+            out.append(d)
+        return out
+
+    def list_running(self) -> List[Dict[str, Any]]:
+        """**所有**在跑的任务（不分页），带 `stall` 秒数。
+
+        ★ 为什么不能拿 `list(n)` 当控制面（2026-11-23 事故，真机实测）
+          看门狗原来调 `list(30)`，而它是 `ORDER BY created_at DESC LIMIT 30`。
+          用户一次提交了 42 个 App：正在跑的是**最早创建**的那一条，名次第 42，
+          根本不在前 30 里 → 看门狗从头到尾没看过它：85 分钟零输出没写一句提醒、
+          没做一次强制收工；用户 16:45 点停止，也没人代为解开卡住的注入调用。
+          最后只能重启服务（17:06）。批次越大越必然复现 ——
+          也就是说，只要队列长度超过 30，看门狗的"强制收工"等于不存在。
+
+          凡是**拿列表做判断**的地方（是否卡死、该不该强制、该不该收尾），
+          都必须用这个不分页的查询；`list()` 只给界面翻页用。
+        """
+        now = time.time()
+        with self._c() as c:
+            rows = c.execute(
+                "SELECT id,created_at,started_at,status,stage,progress,req,app_label,"
+                "package,device,heartbeat_at,duration "
+                "FROM jobs WHERE status='running'").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            hb = d.pop("heartbeat_at", None)
+            d["stall"] = _stall_of(d, hb, now)
             out.append(d)
         return out
 

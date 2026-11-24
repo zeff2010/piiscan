@@ -1564,8 +1564,11 @@ def _ui_coverage(fr: FlowResult) -> str:
     # 预算与实际耗时分开写，因为它们经常不相等：提前终止（连续重启超限）、
     # AI 等待补偿都会让两者差出几十分钟。只写一个数就分不清
     # "没给足时间"与"给了时间但没跑满"。
-    _DEPTH_NAME = {"pre": "1 档 · 仅同意前", "light": "2 档 · 同意后浅测",
-                   "deep": "3 档 · 深度", "extreme": "4 档 · 极致",
+    # 2026-11-19 三档。extreme 只为读得懂旧存档（原 4 档，预算与现在的
+    # 3 档相同 3600 秒），新任务不会再出现这个值。
+    _DEPTH_NAME = {"pre": "1 档 · 仅同意前", "light": "2 档 · 二级菜单",
+                   "deep": "3 档 · 全功能",
+                   "extreme": "3 档 · 全功能（旧 4 档存档）",
                    "normal": "常规（旧档）"}
     _dn = _DEPTH_NAME.get(str(fr.depth or ""), str(fr.depth or ""))
     if _dn or fr.budget_seconds:

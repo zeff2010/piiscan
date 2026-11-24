@@ -621,6 +621,29 @@ class FlowResult:
     # 里面若不写"这一轮到底点了几次、卡在哪"，"未发现问题"和"没测"在纸面上
     # 就还是一句话——这正是使用者质疑"跑了十几个 App 一个实锤都没有"的由来。
     pre_explore: Dict[str, Any] = field(default_factory=dict)
+    # ---- 1 档「政策处理后静置观测」的实况（2026-11-18）----
+    # 结构见 collector.ScanResult.pre_settle（seconds/screens/why）。
+    # 与 pre_explore 分开：静置是"我们没动手，App 自己跑了多久"，探索是
+    # "我们点了几下"。合成一个字段，报告就说不清采集是哪一半触发的 ——
+    # 而这一轮修的就是"待得不够久"，秒数必须能被报告单独引用。
+    pre_settle: Dict[str, Any] = field(default_factory=dict)
+    # ---- 同意分水岭的复核结果（2026-11-18）----
+    # consent_reclassified：收尾按点击时刻从"同意前"改判过来的条数；
+    # consent_sync_events：落在点击后 CONSENT_SYNC_MS 内、属于同意动作本身的条数。
+    # 这两个数必须进 flow.json：简版是使用者最先看的那份，若只写"同意前 87 条"，
+    # 读者无法分辨其中 47 条其实是点「同意」那一下带出来的。
+    # 结构见 collector.ScanResult.consent_reclassified / consent_sync_events。
+    consent_reclassified: int = 0
+    consent_sync_events: int = 0
+    # 同一交互内那些事件的类型摘要（人话）。只写条数不够 ——
+    # 复核员看到"另有 74 条"仍然不知道采了什么，见 collector 的字段注释。
+    consent_sync_summary: str = ""
+    # ---- 尝试获取但未成功（2026-11-18 用户口径第 4 条）----
+    # 「调用了接口、但没取到有效值」的那批：写进报告、标明未成功、**不算违规**。
+    # 结构：{"count": 总次数, "text": "IMEI（2 次，调用被拒绝）…"}
+    # 必须进 flow.json：简版的「本轮检测范围」要靠它交代"试过但没成功"，
+    # 否则读者会把"未收集"理解成"压根没试"。
+    p1_attempted: Dict[str, Any] = field(default_factory=dict)
     # ---- 旁路取证（注入被加固拦死时的系统侧补证）----
     # 结构见 piiscan/bypass.py:collect()。报告里必须写清它的边界：
     # 只能证明"用过"，给不出调用栈、无法归因 —— 只能算"待人工确认"，不能当认定依据。
@@ -754,6 +777,11 @@ class FlowResult:
             "device_identities": self.device_identities,
             "depth": self.depth, "budget_seconds": self.budget_seconds,
             "pre_explore": self.pre_explore,
+            "pre_settle": self.pre_settle,
+            "consent_reclassified": self.consent_reclassified,
+            "consent_sync_events": self.consent_sync_events,
+            "consent_sync_summary": self.consent_sync_summary,
+            "p1_attempted": self.p1_attempted,
             "scan_elapsed": self.scan_elapsed,
             "bypass": self.bypass,
             # 本次读到的各类声明文档（隐私政策 / 用户协议 / 清单…，带全文）。

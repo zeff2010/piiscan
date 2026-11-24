@@ -289,10 +289,110 @@ def t_roundtrip():
         _uninstall_fakes()
 
 
+# ============================================================ ⑧ 分水岭=点击那一瞬
+def _ev(ts, elapsed, before=True, noise="", api="x"):
+    from types import SimpleNamespace
+    return SimpleNamespace(ts=ts, elapsed_ms=elapsed,
+                           before_consent=before, noise=noise, api=api)
+
+
+def _res_with_clocks(offset_ms: int = 133, launch_pc: float = 1022.0):
+    """造一份"设备时钟比本机快 offset_ms"的采集结果。"""
+    r = C.ScanResult(package="com.demo")
+    r.started_at = 1000.0                  # 采集开始（本机）
+    r.marks["app_launched"] = int((launch_pc - 1000.0) * 1000)
+    return r, launch_pc * 1000 + offset_ms  # 返回设备侧的启动时刻（epoch ms）
+
+
+def t_tap_moment():
+    """点击回调里同步发生的事件，不能被算成"同意前"。
+
+    真机（驿站助手 2026-11-18，红米9）：`input tap` 10:57:37.685 →
+    应用 `StartActivity$4.onClick` .777 → 读 android_id .792，
+    而同意登记要到 10:57:42.7（晚 5 秒）—— 88 条事件里 69 条被标"同意前"，
+    照这份标记出报告就会写"未经同意读取 Android ID"。
+    """
+    r, dev_launch = _res_with_clocks()
+    # 启动时的时区读取：点击之前，不能动
+    r.events.append(_ev(dev_launch + 924, 924, api="SystemProperties.get"))
+    # 点击（本机 1030.0）之后 107ms 读 android_id —— 属于同意动作本身
+    tap_pc = 1030.0
+    r.consent_tap_at = tap_pc
+    r.events.append(_ev(dev_launch + 8107, 8107, api="getStringForUser"))
+    # 点击后 2 秒：仍是同意之后，但不算"同一交互"
+    r.events.append(_ev(dev_launch + 12000, 12000, api="URL.openConnection"))
+    check("时钟偏移按 (ts-elapsed) 中位数还原", C._clock_offset_ms(r) == 133)
+    n = C._reclassify_consent_boundary(r, log=lambda *_: None)
+    check("点击之后的事件被改判（2 条）", n == 2, str(n))
+    check("点击之前的那条仍是同意前",
+          r.events[0].before_consent is True)
+    check("点击同一交互内的那条不再是同意前",
+          r.events[1].before_consent is False)
+    check("同一交互计数只含 1.5 秒内的（1 条）",
+          r.consent_sync_events == 1, str(r.consent_sync_events))
+    check("改判条数已落盘", r.consent_reclassified == 2)
+
+
+def t_tap_moment_noise():
+    """系统噪声事件即使落在点击之后也不改判（它本来就不参与认定）。"""
+    r, dev_launch = _res_with_clocks()
+    r.consent_tap_at = 1030.0
+    r.events.append(_ev(dev_launch + 8200, 8200, noise="系统自身行为"))
+    n = C._reclassify_consent_boundary(r, log=lambda *_: None)
+    check("噪声事件不改判", n == 0 and r.events[0].before_consent is True)
+    check("噪声仍计入同一交互的观察条数", r.consent_sync_events == 1)
+
+
+def t_clock_offset_bad():
+    """时基错乱的一条事件不能把时钟偏移带走（实测吃到过 -22.3 秒）。"""
+    r, dev_launch = _res_with_clocks()
+    r.events.append(_ev(dev_launch + 1000, 1000))
+    r.events.append(_ev(dev_launch + 2000, 2000))
+    # 收尾补齐的分水岭事件：ts 按采集开始造，elapsed 却填进程相对值
+    r.events.append(_ev(1000 * 1000, 120000))
+    check("个别错乱事件不影响偏移估算", C._clock_offset_ms(r) == 133,
+          str(C._clock_offset_ms(r)))
+    # 全部事件都跨了进程（差 200 秒）→ 估不出来时返回 None，不硬算
+    r2, _ = _res_with_clocks()
+    r2.events.append(_ev(500 * 1000, 1000))   # 与本机时钟差约 8 分钟
+    check("偏移超过合理上限时返回 None", C._clock_offset_ms(r2) is None)
+
+
+def t_scope_consent_sync():
+    """简版「本轮检测范围」要把同意交互与 1 档的观测边界写出来。"""
+    from piiscan.report.sop_brief import _scope_line
+    d = {"depth": "light", "consent_sync_events": 68}
+    line = _scope_line(d)
+    check("2 档写明同一交互条数", "68 条事件与「同意」点击属于同一交互" in line, line)
+    check("2 档写明不计为同意前收集", "不计为同意前收集" in line, line)
+    d2 = {"depth": "pre", "pre_explore": {"taps": 2, "screens": 3}}
+    line2 = _scope_line(d2)
+    check("1 档写明不执行同意动作", "本轮不执行同意动作" in line2, line2)
+    check("1 档写明观测边界", "不在本轮观测范围内" in line2, line2)
+    check("1 档不写同意交互条数", "同一交互" not in line2, line2)
+
+
+def t_flow_carries_consent_sync():
+    """同意复核结果必须进 flow.json —— 简版只读 flow.json，不进就等于没算。
+
+    真机踩过：字段只加在 ScanResult 上，_scope_line 从 flow.json 取不到，
+    报告那句"47 条与同意点击同一交互"就永远不出现，而且屏幕上看着很正常。
+    """
+    from piiscan.flow.models import FlowResult
+    fr = FlowResult()
+    d = fr.to_dict()
+    check("flow.json 带 consent_sync_events", "consent_sync_events" in d)
+    check("flow.json 带 consent_reclassified", "consent_reclassified" in d)
+    check("默认值为 0（旧存档读进来不会炸）",
+          d.get("consent_sync_events") == 0 and d.get("consent_reclassified") == 0)
+
+
 def main() -> int:
     for fn in (t_kind, t_first_launch, t_only_first, t_drill_path, t_no_signal,
                t_weak, t_sync_failed, t_shot_quota, t_shot_failed,
-               t_ensure_marker, t_ensure_noop, t_roundtrip):
+               t_ensure_marker, t_ensure_noop, t_roundtrip,
+               t_tap_moment, t_tap_moment_noise, t_clock_offset_bad,
+               t_scope_consent_sync, t_flow_carries_consent_sync):
         fn()
     print("\n同意动作（分水岭）回归：%d 项通过，%d 项失败" % (OK, len(BAD)))
     for b in BAD:

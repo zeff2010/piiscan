@@ -341,6 +341,30 @@ class ScanResult:
     #    "screen_label", "screenshot_idx", "sync", "why"}
     #   watershed=True 的那一条才是分水岭（只认第一条）。
     consent_events: List[Dict[str, Any]] = field(default_factory=list)
+    # ---- 点击「同意」的那一瞬（epoch 秒）----
+    # ★ 为什么必须单独记（2026-11-18，驿站助手真机对照）：
+    #   登记同意要走"点击 → dump 确认界面变了 → 再登记"，这中间有 3~5 秒。
+    #   而 App 常在**点击的回调里同步**干一大摊事（驿站助手在
+    #   `StartActivity$4.onClick` 里跑 MainApplication.oncreatService：
+    #   greenDAO 建表、网易云信初始化、读 Android ID）。
+    #   实测：`input tap` 在 10:57:37.685，应用 onClick 在 .777，
+    #   读 android_id 在 .792 —— 全都发生在同一次点击的 107 毫秒内。
+    #   可 consent_elapsed_ms 记到了 10:57:42.7（晚 5 秒），于是这 87 条
+    #   "点击引起的"事件被标成"同意前"，报告就会写"同意前读取 Android ID"。
+    #   这是**假话**：它是在用户点同意的那一刻读的。
+    #   所以分水岭以"点击那一瞬"为准，并留 epoch 给收尾按绝对时刻复判。
+    consent_tap_at: float = 0.0
+    # 收尾按 epoch 复核的结果：被从"同意前"改判为"同意及之后"的条数。
+    consent_reclassified: int = 0
+    # 落在 [点击, 点击+CONSENT_SYNC_MS] 之间的事件条数 —— 与同意同一个交互，
+    # 报告要单独说明，不能记成"同意前收集"。
+    consent_sync_events: int = 0
+    # 同一交互内那些事件的类型摘要（人话，如「设备标识 3 条、本地留存 41 条」）。
+    # ★ 为什么要有（2026-11-19 用户质疑"4 档也不报问题 3 了"）：
+    #   只记条数的话，报告只能写"另有 74 条"，复核员仍然不知道"到底采了什么"。
+    #   驿站助手这一轮点击后 400ms 就读了 Android ID 并外发，属于同一交互、
+    #   不判违规，但必须让人看见 —— 否则"没判违规"会被读成"什么都没发生"。
+    consent_sync_summary: str = ""
     # 静态分析挑出的政策候选链接。开局就按它直取全文，取不到才回界面滑读。
     policy_urls: List[str] = field(default_factory=list)
     # ---- 测试机真实标识（取值比对基准）----
@@ -384,6 +408,11 @@ class ScanResult:
     #   就带"同意"两个字，一匹配就被当成同意动作截断 —— 探索记录反而
     #   把探索判成没做。结构化字段没有这个问题。
     pre_explore: Dict[str, Any] = field(default_factory=dict)
+    # 1 档「政策处理后静置观测」的结果（其他档位为空）
+    #   {"seconds":52.0, "screens":1, "changes":[...], "why":""}
+    # 与 pre_explore 分开记：静置是"我们没动手、App 自己跑了多久"，
+    # 探索是"我们点了几下"。混在一起会让报告分不清是谁触发的采集。
+    pre_settle: Dict[str, Any] = field(default_factory=dict)
     locked_at_start: bool = False
     # 新增：界面序列 / 政策捕获 / 网络去向 / SDK / 安装情况
     screens: List[Dict[str, Any]] = field(default_factory=list)
@@ -1126,7 +1155,9 @@ _PERM_STICKY_TRIES = 3
 def _capture_perm_dialog(res: ScanResult, xml: str, serial: str,
                          log: Callable[[str], None], phase: str = "P4",
                          pre_text: str = "",
-                         seen: Optional[set] = None) -> bool:
+                         seen: Optional[set] = None,
+                         tap_allow: bool = True,
+                         app_before: Optional[bool] = None) -> bool:
     """若当前屏是系统权限弹窗：取证 → 代点「允许」→ 继续遍历。
 
     为什么必须专门处理（而不是当成普通一屏点掉）：
@@ -1186,6 +1217,16 @@ def _capture_perm_dialog(res: ScanResult, xml: str, serial: str,
     #   所以"能不能当证据"的判据是 `is not True`，而写进报告的措辞要分三种。
     _fg_state = app_in_foreground(serial, getattr(res, "package", "") or "")
     _evidable = (_fg_state is True)      # 只有明确在前台才算有效证据
+    # ★ 权限弹窗盖住被测应用时，窗口焦点必然在系统的权限控制器上 —— 这时
+    #   `_fg_state` 是 False，但**不代表应用没在运行**。1 档尤其如此：整轮
+    #   都停在未同意状态，弹窗就是 App 自己弹出的。
+    #   调用方若在弹窗出现**之前**刚确认过被测应用在前台，就可以传
+    #   `app_before=True` 把这条判据补上（否则"同意前索权"永远凑不齐证据）。
+    #   反之 `app_before=False`（弹窗前就不在前台）比焦点读不到更糟，直接否掉。
+    if app_before is True:
+        _evidable = True
+    elif app_before is False:
+        _evidable = False
     if _fg_state is False:
         label += "·应用不在前台"
     elif _fg_state is None:
@@ -1233,8 +1274,13 @@ def _capture_perm_dialog(res: ScanResult, xml: str, serial: str,
         "phase": phase,
         "at_ms": at_ms,
         "shot": shot_idx,
-        "action": ("代点「%s」" % allow) if allow else "未代点（未找到允许类按钮）",
+        "action": (("代点「%s」" % allow) if tap_allow else
+                   "未代为作答（本档不点系统权限弹窗）") if allow
+                  else "未代点（未找到允许类按钮）",
         "pkg": pd.get("pkg") or "",
+        # 弹窗出现**之前**被测应用是否在前台。判定「同意前索权」必须看它：
+        # 弹窗本身必然让焦点离开应用，只看 evidable 会把每一条都排除掉。
+        "app_before": app_before,
         # 「这次申请能不能当证据」：只有**明确确认应用在前台**才算。
         # 判定层（flow/permissions.py）必须读这两个字段，否则会出现
         # "errors 说这场景不能当证据、Q026 却拿它判 pass" 的自相矛盾
@@ -1248,7 +1294,7 @@ def _capture_perm_dialog(res: ScanResult, xml: str, serial: str,
         % (perm or "未知权限", len(scene["pre_text"]),
            "有" if scene["has_purpose"] else "无", scene["action"]))
 
-    if allow:
+    if allow and tap_allow:
         for n in uiwalk.clickable(xml):
             t = (n.text or n.content_desc or "").strip()
             if t == allow:
@@ -2334,6 +2380,157 @@ _STRENGTH_LABELS = {
     "weak": "中性确认（不计为分水岭）",
 }
 
+# 与"点击同意"同一个交互的时间窗（毫秒）。
+# App 常在同意按钮的回调里同步初始化 SDK、读设备标识（驿站助手实测 107ms 内
+# 就把 Android ID 读完了）。这些事件既不是"同意前"，也不该当成正常的
+# "同意后收集"——它们是**同意动作本身的一部分**，报告要单独说明。
+# 与判定层的 `flow.compare.CONSENT_EDGE_MS` 取同一个数：报告里说的"同一交互"、
+# 认定时排除的"时序不可分辨"，必须是同一批事件，否则两处口径互相打脸。
+CONSENT_SYNC_MS = 1500
+
+# 手机与采集端时钟差的合理上限（毫秒）。超过这个数就不是"时钟差"，
+# 而是数据本身跨了进程/存档被拼接 —— 这种时候按 0 处理并留痕。
+CLOCK_SANE_MS = 120000
+
+
+def _proc_origin_ms(res: ScanResult) -> int:
+    """事件时间基的零点（进程启动时刻，epoch 毫秒）。
+
+    `events[].elapsed_ms` 是"进程启动后多少毫秒"，而 `marks` / `started_at`
+    是"采集开始后多少毫秒"。两者差着注入+启动的十几二十秒，混用会让
+    "同意前/同意后"整段偏移 —— 这里由事件自带的 (ts - elapsed_ms) 反推零点。
+    取最大值：脚本重启后 elapsed 会归零，旧进程的差值更小，最大值对应最新进程。
+    """
+    origin = 0
+    for e in (getattr(res, "events", None) or []):
+        t = getattr(e, "ts", None)
+        el = getattr(e, "elapsed_ms", None)
+        if t and isinstance(el, (int, float)):
+            v = int(t) - int(el)
+            if v > origin:
+                origin = v
+    return origin
+
+
+def _scan_ms_from_event_ms(res: ScanResult, evt_ms: Optional[int]) -> int:
+    """「进程相对毫秒」→「采集开始相对毫秒」（marks 用的时基）。
+
+    ★ 为什么需要：`consent_elapsed_ms` 与事件同基（进程启动为 0），因为所有
+      "同意前/后"的判定都拿它跟 `events[].elapsed_ms` 比；而 `marks` 与
+      报告里的时间轴是"采集开始为 0"。两者差着注入+启动的十几二十秒，
+      直接把进程相对值写进 marks，时间轴上"同意"会往前跳 20 秒。
+    """
+    if evt_ms is None:
+        return 0
+    o = _proc_origin_ms(res)
+    st = int(float(getattr(res, "started_at", 0) or 0) * 1000)
+    return int(evt_ms) - (o - st) if o else int(evt_ms)
+
+
+def _event_ts_from_event_ms(res: ScanResult, evt_ms: Optional[int]) -> int:
+    """「进程相对毫秒」→ 事件时间戳（epoch 毫秒）。"""
+    ms = int(evt_ms or 0)
+    o = _proc_origin_ms(res)
+    if o:
+        return o + ms
+    return int(float(getattr(res, "started_at", 0) or 0) * 1000) + ms
+
+
+def _clock_offset_ms(res: ScanResult) -> Optional[int]:
+    """设备时钟 - 本机时钟 的偏移（毫秒）；估不出来返回 None。
+
+    ★ 为什么要有这一层：`events[].ts` 来自设备（System.currentTimeMillis），
+      而"点击时刻"是采集端记的（本机 time.time）。手机与电脑的时钟并不保证
+      对齐，实测差几百毫秒到几秒都见过。拿两个不同时钟的绝对时刻直接比大小，
+      会把"点击之前"的事件判成"点击之后" —— 那是另一种假话。
+
+      估法：设备侧首个进程的启动时刻 = ts - elapsed_ms（取**最小值**：
+      每次重新注入都会让 elapsed 归零，ts-elapsed 随之变大，所以最小值
+      对应最早那个进程，正好与本机记的 marks["app_launched"] 对得上），
+      本机侧同一个时刻 = started_at + marks["app_launched"]，两者之差即偏移。
+
+      合理性检查：同一台机器用 USB 连着，秒级以内才叫时钟差；算出
+      分钟级的偏移必是某一侧的数据有问题（事件来自别的进程/存档被拼接），
+      这时宁可返回 None（调用方按 0 处理并留痕，报告里能看出来），
+      也不拿一个假偏移去改判同意边界。
+    """
+    marks = getattr(res, "marks", None) or {}
+    pc_ms = marks.get("app_launched")
+    st = float(getattr(res, "started_at", 0) or 0)
+    if pc_ms is None or not st:
+        return None
+    vals = []
+    for e in (getattr(res, "events", None) or []):
+        t = getattr(e, "ts", None)
+        el = getattr(e, "elapsed_ms", None)
+        if t and isinstance(el, (int, float)):
+            vals.append(int(t) - int(el))
+    if not vals:
+        return None
+    # 取中位数而不是最小/最大值：绝大多数事件的 (ts - elapsed_ms) 就是进程
+    # 启动时刻本身，只有少数"时基没对齐"的历史事件会偏离（例如收尾补齐的
+    # 分水岭事件按 started_at + ms 造 ts，却把 ms 当作进程相对值填 elapsed）。
+    # 最小/最大值会被那一两条带走 —— 实测就吃到过：偏移被算成 -22.3 秒。
+    vals.sort()
+    origin = vals[len(vals) // 2]
+    off = origin - (int(st * 1000) + int(pc_ms))
+    if abs(off) > CLOCK_SANE_MS:
+        return None
+    return off
+
+
+def _reclassify_consent_boundary(res: ScanResult,
+                                 log: Callable[[str], None] = print) -> int:
+    """按**绝对时刻**复核每条事件的「同意前/后」，返回改判条数。
+
+    ★ 为什么必须在收尾再判一次（2026-11-18，驿站助手真机对照）：
+      事件到达时由脚本按"此刻同意没有"打标，而 `consent_given` 要等点击
+      返回、界面确认之后才置位（实测晚 5 秒）。这 5 秒里到达的事件，
+      即使就发生在点击回调内部，也被打上"同意前"。
+      实测证据：`input tap` 10:57:37.685 → `StartActivity$4.onClick` .777
+      → 读 android_id .792；88 条事件里 87 条在点击之后，却有 69 条标着
+      "同意前"。照这份标记出报告，就会写成"未经同意读取 Android ID"。
+
+      复核口径只用绝对时刻（epoch），并用 `_clock_offset_ms` 把两个时钟
+      对齐 —— 单位或时基一旦混用，这种错还会以另一种形式回来。
+    """
+    tap_at = float(getattr(res, "consent_tap_at", 0) or 0)
+    if not tap_at or not res.events:
+        return 0
+    off = _clock_offset_ms(res)
+    tap_ms = int(tap_at * 1000) + int(off or 0)
+    flipped = 0
+    sync = 0
+    sync_pi: Dict[str, int] = {}
+    for e in res.events:
+        try:
+            ts = int(getattr(e, "ts", 0) or 0)
+        except Exception:
+            continue
+        if not ts or ts < tap_ms:
+            # 点击之前发生的，本来就是同意前，不动。
+            continue
+        if getattr(e, "before_consent", False) and not getattr(e, "noise", ""):
+            e.before_consent = False
+            flipped += 1
+        if ts <= tap_ms + CONSENT_SYNC_MS:
+            sync += 1
+            _k = str(getattr(e, "pi", "") or getattr(e, "category", "") or "其他")
+            sync_pi[_k] = sync_pi.get(_k, 0) + 1
+    res.consent_reclassified = flipped
+    res.consent_sync_events = sync
+    # 只取前 5 类：报告里一行说清"主要采了什么"，全量分类在事件表里。
+    _top = sorted(sync_pi.items(), key=lambda kv: -kv[1])[:5]
+    res.consent_sync_summary = "、".join("%s %d 条" % (k, v) for k, v in _top)
+    if flipped or sync:
+        log("[*] 同意分水岭复核：点击时刻（已按设备时钟偏移 %s 毫秒校正），"
+            "%d 条由「同意前」改判为「同意及之后」，其中 %d 条落在点击后 "
+            "%d 毫秒内（属于同意动作本身%s）"
+            % (off if off is not None else "未知（按 0 处理）",
+               flipped, sync, CONSENT_SYNC_MS,
+               ("：" + res.consent_sync_summary) if res.consent_sync_summary else ""))
+    return flipped
+
 
 def _mark_consent(res: ScanResult, label: str, via: str,
                   log: Callable[[str], None] = print, *,
@@ -2342,7 +2539,8 @@ def _mark_consent(res: ScanResult, label: str, via: str,
                   elapsed_ms: Optional[int] = None,
                   screen_label: str = "",
                   verified: bool = True,
-                  why: str = "") -> bool:
+                  why: str = "",
+                  tapped_at: Optional[float] = None) -> bool:
     """登记一次同意动作；成为"分水岭"时返回 True。
 
     ★ 这是**唯一**的同意登记入口。此前 consent_given 在 4 处各写一遍
@@ -2358,9 +2556,30 @@ def _mark_consent(res: ScanResult, label: str, via: str,
     同时往 `res.events` 里插一条 `signal=CONSENT` 的边界事件，让事件流里
     有一个显式的分水岭；该事件带 `noise` 标记，不参与任何"收集了什么"的统计
     （见 compare.event_pi），但仍留在存档里可审计。
+
+    `tapped_at`（epoch 秒）是**点击发出去的那一瞬**，与"确认完成"的时刻不同。
+    调用方若能拿到，必须传：App 在同意按钮的回调里同步读设备标识时，
+    门槛差 1 秒就足以把结论从"违规"写成"合规"或反过来。
     """
     now_ms = int(elapsed_ms) if elapsed_ms is not None else int(
         (time.time() - float(getattr(res, "started_at", 0) or time.time())) * 1000)
+    # ★ 分水岭以**点击那一瞬**为准，不以"确认完成"为准（2026-11-18）。
+    #   见 ScanResult.consent_tap_at 的注释：点击回调里同步发生的事，
+    #   若按事后确认的时刻分界，就会被整段错划到"同意前"。
+    #   `now_ms` 是采集开始（started_at）相对值，与 `marks` 同基；
+    #   而 `events[].elapsed_ms` 是**进程启动**相对值 —— 两个零不同源，
+    #   所以这里同时算出"相对进程启动"的值给分水岭与事件流用。
+    tap_scan_ms = now_ms
+    tap_evt_ms = now_ms
+    _origin = _proc_origin_ms(res)
+    if tapped_at:
+        try:
+            tap_scan_ms = int((float(tapped_at)
+                               - float(getattr(res, "started_at", 0)
+                                       or tapped_at)) * 1000)
+        except Exception:
+            tap_scan_ms = now_ms
+        tap_evt_ms = (int(float(tapped_at) * 1000) - _origin) if _origin else tap_scan_ms
     lab = (label or "").strip()[:CONSENT_LABEL_MAX]
     strength = strength or "explicit"
     rec: Dict[str, Any] = {
@@ -2376,6 +2595,12 @@ def _mark_consent(res: ScanResult, label: str, via: str,
         "sync": "not_attempted",
         "why": why or "",
     }
+    if tapped_at:
+        # 点击那一瞬的两个时基都留档：`tap_scan_ms` 与 marks 同基，
+        # `tap_evt_ms` 与 events[].elapsed_ms 同基。复核时要能看出差在哪。
+        rec["tap_scan_ms"] = tap_scan_ms
+        rec["tap_elapsed_ms"] = tap_evt_ms
+        rec["confirmed_elapsed_ms"] = now_ms
     res.consent_events.append(rec)
 
     if strength == "weak":
@@ -2395,8 +2620,18 @@ def _mark_consent(res: ScanResult, label: str, via: str,
     res.consent_given = True
     res.consent_strength = strength
     res.consent_source = "ui:%s" % (lab or via)
-    res.consent_elapsed_ms = now_ms
-    mark(res, "consent", now_ms)
+    # 分水岭时刻 = 点击那一瞬（有戳记时）；consent_elapsed_ms 与事件同基。
+    res.consent_elapsed_ms = tap_evt_ms if tapped_at else now_ms
+    if tapped_at:
+        res.consent_tap_at = float(tapped_at)
+    elif elapsed_ms is not None and _proc_origin_ms(res):
+        # 脚本侧给的 `elapsedMs` 就是"点击那一刻"的进程相对毫秒（它 hook 了
+        # performClick），反推成 epoch 后同样能做绝对时刻复核 —— 这条通道
+        # 反而比本机记的时刻更准，不该因为没传 tapped_at 就退出复核。
+        _tap_ep = _event_ts_from_event_ms(res, elapsed_ms)
+        if _tap_ep:
+            res.consent_tap_at = _tap_ep / 1000.0
+    mark(res, "consent", tap_scan_ms if tapped_at else now_ms)
 
     # 分水岭取证图（独立配额，不和遍历截图抢名额）
     try:
@@ -2479,7 +2714,7 @@ def _ensure_consent_marker(res: ScanResult,
         api="用户点击「%s」" % lab[:CONSENT_LABEL_MAX],
         args="触发方式：收尾补齐（采集过程中未走到登记点）",
         result="同意",
-        ts=int((res.started_at or time.time()) * 1000) + ms,
+        ts=_event_ts_from_event_ms(res, ms) or int((res.started_at or time.time()) * 1000),
         elapsed_ms=ms,
         before_consent=False, signal="CONSENT", group="同意动作", pi="",
         evidence="A", sink="", ui_action=lab[:CONSENT_LABEL_MAX],
@@ -2510,7 +2745,8 @@ def _mark_consent_after_tap(res: Optional[ScanResult], node: Any, via: str,
                             log: Callable[[str], None] = print, *,
                             signal: str = "",
                             screen_label: str = "",
-                            set_consent: Optional[Callable[[str], None]] = None) -> bool:
+                            set_consent: Optional[Callable[[str], None]] = None,
+                            tapped_at: Optional[float] = None) -> bool:
     """点击之后补登记：这次点的按钮是不是同意按钮。
 
     为什么要在"点击"这一层兜一道：同意入口可能从任意一条路径被点到 ——
@@ -2545,7 +2781,8 @@ def _mark_consent_after_tap(res: Optional[ScanResult], node: Any, via: str,
         return _mark_consent(
             res, label, via, log, set_consent=set_consent, strength="weak",
             screen_label=screen_label, verified=False,
-            why="同一行内既有同意表述又有协议链接，无法判断点中哪个，不计为分水岭")
+            why="同一行内既有同意表述又有协议链接，无法判断点中哪个，不计为分水岭",
+            tapped_at=tapped_at)
     strength, why = _consent_label_kind(label)
     if strength == "":
         return False
@@ -2554,7 +2791,8 @@ def _mark_consent_after_tap(res: Optional[ScanResult], node: Any, via: str,
     return _mark_consent(
         res, label, via, log, set_consent=set_consent,
         strength=strength, screen_label=screen_label,
-        verified=(signal in ("focus", "ui")), why=why)
+        verified=(signal in ("focus", "ui")), why=why,
+        tapped_at=tapped_at)
 
 
 
@@ -3012,6 +3250,11 @@ def _consent_tap_once(res: ScanResult, serial: str, cap: Dict[str, Any],
     log("[*] 点击同意入口：%s" % btn.label[:40])
     res.ui_steps.append("同意：点击「%s」" % btn.label)
     fp_before = uiwalk.screen_fingerprint(xml_now)
+    # ★ 点击那一瞬（2026-11-18）：分水岭必须落在这里，不是"确认完成"之后。
+    #   下面还有 sleep(2.0) + dump + 失败重试，全走完再登记会晚 3~5 秒；
+    #   而 App 在同意按钮的回调里同步读设备标识（驿站助手实测 107 毫秒内
+    #   就读完 Android ID），晚记 5 秒就把这批事件全划进"同意前"。
+    _tap_at = time.time()
     uiwalk.tap(serial, x, y)
     time.sleep(2.0)
 
@@ -3029,6 +3272,7 @@ def _consent_tap_once(res: ScanResult, serial: str, cap: Dict[str, Any],
                 res.errors.append("同意按钮被系统悬浮窗（%s）遮挡，已关闭并重试"
                                   % "、".join(killed))
                 time.sleep(1.0)
+                _tap_at = time.time()      # 重试的那一下才是真正生效的点击
                 uiwalk.tap(serial, x, y)
                 time.sleep(2.0)
         except Exception:
@@ -3052,7 +3296,8 @@ def _consent_tap_once(res: ScanResult, serial: str, cap: Dict[str, Any],
                   _src_label, log,
                   set_consent=set_consent,
                   strength=_strength or "explicit",
-                  screen_label="首启弹窗", why=_why)
+                  screen_label="首启弹窗", why=_why,
+                  tapped_at=_tap_at)
     observe_screen(res, "同意后界面", serial)
     return True
 
@@ -4725,6 +4970,37 @@ def _probe_first_launch(res: ScanResult, script, serial: str, log: Callable[[str
         if _grace > 0:
             deadline += _grace
             log("[*] 前台一直没切过来，首启观测窗口顺延 %.0fs（不计入窗口消耗）" % _grace)
+
+    # ★★ 2026-11-18：1 档在**动任何东西之前**，先把静置做完。
+    #
+    #   真机对照（驿站助手，同一台机、同一个 APK、同样的"未同意"状态）：
+    #     2 档：同意在第 50.6 秒，第 **24.0 秒**读了 Android ID，同意前 69 条事件；
+    #     1 档：同样的窗口、同样的 App，只有 4 条事件，一条设备标识都没有。
+    #   差别不在 hook（两边 75 个，静置期间健康检查 3/3 通过），也不在判定，
+    #   而在**时间去哪了**：1 档的 60 秒窗口先被"按链接抓政策 + 点开政策页
+    #   探路"吃掉 25 秒，真正"什么都不做地守着"只剩 34 秒 —— 而采集点在第
+    #   24 秒，正好落在被吃掉的那一段里。取政策是 Python 侧发 HTTP，设备上的
+    #   App 照跑，但我们把"观测"换成了"干活"，谁也没在盯着 App 自己做了什么。
+    #
+    #   所以顺序改成：静置 → 取政策 → 探路 → 探索。静置期间不点击、不取政策。
+    _settled_first = False
+    if consent_only:
+        # ★ 注意：这里**不**先拍首启截图。截图要 dump，而 dump 会让 App 主线程
+        #   去响应 accessibility 请求 —— 首启最初这几十秒正是 App 自己初始化
+        #   （Application.onCreate、第一波网络、设备标识）的时候，谁去抢主线程
+        #   谁就把这些动作推到后面去。首启界面在静置结束后由主循环补拍。
+        _warm = float(_SETTLE_FIRST_SECONDS)
+        log("[*] 1 档：应用已在前台，先静置 %.0fs 观测（不点击、不取政策、不探路）"
+            % _warm)
+        _ps0 = _pre_consent_settle(
+            res, serial, time.time() + _warm, log,
+            quiet=min(_warm * 0.6, 30.0),
+            get_script=get_script, rehook=rehook)
+        if _ps0.get("seconds"):
+            res.pre_settle = _ps0
+            _settled_first = True
+        # 窗口从此刻重新起算：静置不该再吃掉取政策与取证的预算。
+        deadline = time.time() + max(5, wait_seconds)
     harvested: List[str] = []
     policy_resolved = False
     consent_done = False
@@ -4878,8 +5154,19 @@ def _probe_first_launch(res: ScanResult, script, serial: str, log: Callable[[str
 
         texts = uiwalk.screen_texts(xml)
         # ---- 未同意阶段就弹出系统权限框：先取证（这本身是重要线索）----
+        # `app_before`：首启阶段此刻正在看被测应用的首启界面，弹窗把它盖住了 ——
+        # 窗口焦点必然离开应用，只用焦点判据会把每一条 P1 索权都标成"不能当证据"。
         if _capture_perm_dialog(res, xml, serial, log, "P1",
-                                pre_text=prev_app_texts, seen=perm_seen_p1):
+                                pre_text=prev_app_texts, seen=perm_seen_p1,
+                                tap_allow=not consent_only,
+                                app_before=(True if getattr(
+                                    res, "app_foreground_seen", False) else None)):
+            # ★ 1 档不代为作答，但也不能就停在这儿：不关掉弹窗，整个首启窗口
+            #   都会卡在这一屏，后面的政策入口一个都看不到（红线是"不点允许"，
+            #   不是"卡死"）。取证完按 BACK 关掉，等同于系统层面的"未授权"。
+            if consent_only:
+                uiwalk.back(serial)
+                log("[*] 1 档首启：系统权限弹窗只取证、不代为作答，已按 BACK 关闭")
             time.sleep(0.8)
             continue
         if texts:
@@ -5097,6 +5384,10 @@ def _probe_first_launch(res: ScanResult, script, serial: str, log: Callable[[str
                 #   真机实测（赣警办）中心落在链接下缘之外 7px，
                 #   弹窗没动，428 字的告知摘要被当成"政策正文"，政策一个字都没拿到。
                 _tap_info: Dict[str, Any] = {}
+                # ★ 点击时刻必须紧贴着 tap 取（2026-11-18）：上面还有截图和
+                #   像素校准，可能耗掉几秒；把那个时刻当成"点击时刻"会让
+                #   回调里同步发生的事件被判到点击之前。
+                _tap_at = time.time()
                 x, y = _tap_entry_robust(serial, entry, log,
                                          ai_sourced=ai_entry is not None, res=res,
                                          refined_bounds=_refined, info=_tap_info)
@@ -5109,7 +5400,8 @@ def _probe_first_launch(res: ScanResult, script, serial: str, log: Callable[[str
                     signal=(_tap_info.get("signal") or "")
                     or ("hit" if ai_entry is None else ""),
                     screen_label="首启弹窗",
-                    set_consent=lambda l: _fresh_script().exports_sync.set_consent(True, l))
+                    set_consent=lambda l: _fresh_script().exports_sync.set_consent(True, l),
+                    tapped_at=_tap_at)
                 try:
                     _fresh_script().exports_sync.read_web_views()
                 except Exception:
@@ -5556,6 +5848,7 @@ def _probe_first_launch(res: ScanResult, script, serial: str, log: Callable[[str
                         cap["entryTexts"].append(sub.label)
                     cap["entryClicked"] = "%s → %s" % (cap["entryClicked"], sub.label)
                     _drill_tap: Dict[str, Any] = {}
+                    _drill_at = time.time()
                     sx, sy = _tap_entry_robust(
                         serial, sub, log,
                         ai_sourced=ai_dec.get("target") is not None, res=res,
@@ -5571,7 +5864,8 @@ def _probe_first_launch(res: ScanResult, script, serial: str, log: Callable[[str
                         res, sub, "政策下钻点击（AI 指定目标）", log,
                         signal=(_drill_tap.get("signal") or "hit"),
                         screen_label="首启弹窗",
-                        set_consent=lambda l: _fresh_script().exports_sync.set_consent(True, l))
+                        set_consent=lambda l: _fresh_script().exports_sync.set_consent(True, l),
+                        tapped_at=_drill_at)
                     try:
                         _fresh_script().exports_sync.read_web_views()
                     except Exception:
@@ -5863,8 +6157,46 @@ def _probe_first_launch(res: ScanResult, script, serial: str, log: Callable[[str
         if policy_resolved and consent_done:
             break
         if consent_only and policy_resolved:
-            # 1 档：政策这件事处理完了，任务目标达成。剩下的界面证据（首启弹窗本身）
-            # 在循环里已经拍过，继续等只是让 App 停在弹窗上烧时间。
+            # ★ 2026-11-18：这里**不再**立刻 break。政策这件事处理完了，但 1 档
+            #   要的是"同意前它做了什么"，而 SDK 读设备标识集中在冷启动后
+            #   20~50 秒 —— 早收工就一条都看不到（见 `_pre_consent_settle` 注释）。
+            #
+            # ★★ 而且"拿到正文"不等于"在界面上动过手"。真机对照（驿站助手）：
+            #   4 档同意前 50 秒里 App 外发 89 次、第 23.0 秒读了 Android ID；
+            #   1 档同样停在弹窗上 46 秒，外发 **0** 次、什么都读不到。两轮唯一
+            #   的差别是 4 档在弹窗上点开了政策文本（日志：「同意前补做政策访问：
+            #   点击…」）—— 一次界面交互把 App 的初始化链带起来了。
+            #   所以这里补一次"点开政策入口看看"，**目的不是取正文**（正文已按
+            #   链接取得），而是让未同意状态下的界面交互真的发生。失败也不影响
+            #   已有正文，只记一笔。
+            if not (cap.get("preConsentGrab") or {}).get("opened"):
+                log("[*] 1 档：正文已按链接取得，仍在界面上点开一次政策入口"
+                    "（4 档实测：同意前的外发与设备标识读取由界面交互带起来）")
+                try:
+                    grab_policy_once(serial, res, log, _fresh_script,
+                                     "1 档静置前探路")
+                except Exception as _e:
+                    cap.setdefault("notes", []).append(
+                        "1 档静置前点开政策入口异常：%s" % _e)
+            if _settled_first:
+                # 阶段 A 已经静置过 50 秒（那份结果在 res.pre_settle 里）。
+                # 这里只补"点开政策之后"的一小段：3 档/4 档实测，点击之后
+                # 两三秒内 App 才开始爆发式初始化，给它十几秒就够了。
+                _extra = _pre_consent_settle(
+                    res, serial, time.time() + 15, log,
+                    get_script=_fresh_script, rehook=rehook)
+                _settle = dict(res.pre_settle or {})
+                _settle["seconds"] = round(
+                    float(_settle.get("seconds") or 0)
+                    + float(_extra.get("seconds") or 0), 1)
+                _settle["after_probe"] = _extra
+                res.pre_settle = _settle
+            else:
+                # 没走过阶段 A（比如重入路径）：按原来的办法，至少静置 20 秒。
+                _settle = _pre_consent_settle(
+                    res, serial, max(deadline, time.time() + 20), log,
+                    get_script=_fresh_script, rehook=rehook)
+                res.pre_settle = _settle
             # ★ "处理完"≠"拿到了正文"（2026-11-11 学习通）：`grab_policy_once`
             #   在"点开了政策页"时也返回 True，于是这里曾写成"已取得政策正文"，
             #   而同一条日志上一行还写着"正文 0 字" —— 报告自己打自己的脸。
@@ -5873,20 +6205,26 @@ def _probe_first_launch(res: ScanResult, script, serial: str, log: Callable[[str
             if _bt >= INLINE_POLICY_MIN:
                 cap["notes"].append(
                     "1 档（仅同意前）：政策正文已取得（%d 字），**未点击同意**；"
-                    "首启观测阶段到此结束，随后在未同意状态下继续点击界面，"
-                    "以触发只在特定界面才初始化的采集行为。" % _bt)
-                log("[*] 1 档：已取得政策正文 %d 字，不点同意，转入未同意探索" % _bt)
+                    "随后在未同意状态下静置 %.0fs（界面自行变化 %d 次），"
+                    "再继续点击界面，以触发只在特定界面才初始化的采集行为。"
+                    % (_bt, _settle.get("seconds") or 0, _settle.get("screens") or 0))
+                log("[*] 1 档：已取得政策正文 %d 字，不点同意，静置 %.0fs 后转入未同意探索"
+                    % (_bt, _settle.get("seconds") or 0))
             elif _pcg.get("opened"):
                 cap["notes"].append(
                     "1 档（仅同意前）：政策入口已点开（%s），但正文未能读取；"
-                    "**未点击同意**，转入未同意状态探索。"
-                    % (_pcg.get("focusAfter") or "政策页"))
-                log("[!] 1 档：政策页已打开但正文读不到（0 字），不点同意，转入未同意探索")
+                    "**未点击同意**，静置 %.0fs 后转入未同意状态探索。"
+                    % (_pcg.get("focusAfter") or "政策页",
+                       _settle.get("seconds") or 0))
+                log("[!] 1 档：政策页已打开但正文读不到（0 字），不点同意，"
+                    "静置 %.0fs 后转入未同意探索" % (_settle.get("seconds") or 0))
             else:
                 cap["notes"].append(
                     "1 档（仅同意前）：未定位到可打开的政策入口，**未点击同意**；"
-                    "转入未同意状态探索。结构树看不见的超链接需人工复核。")
-                log("[!] 1 档：未定位到政策入口，不点同意，转入未同意探索")
+                    "静置 %.0fs 后转入未同意状态探索。结构树看不见的超链接需人工复核。"
+                    % (_settle.get("seconds") or 0))
+                log("[!] 1 档：未定位到政策入口，不点同意，静置 %.0fs 后转入未同意探索"
+                    % (_settle.get("seconds") or 0))
             break
         if rounds >= 8 and not consent_done and not has_policy_word:
             res.popup_evidence.append("首启 %ds 内未发现隐私政策提示，也未发现同意按钮"
@@ -7050,7 +7388,8 @@ def _landing(res: ScanResult, cfg, live, deadline: float,
                         screen_label=str(_pc_c.get("form") or ""),
                         set_consent=(None if get_script is None else
                                      (lambda l: get_script().exports_sync
-                                      .set_consent(True, l))))
+                                      .set_consent(True, l))),
+                        tapped_at=_pc_c.get("at"))
                 except Exception as _e:
                     log("    [.] 着陆同意登记异常（不影响后续）：%s" % _e)
             else:
@@ -7505,6 +7844,7 @@ def _landing(res: ScanResult, cfg, live, deadline: float,
                             shot_no = len(res.click_shots)
                 except Exception as e:
                     log("    [.] 着陆留痕失败（不影响点击本身）：%s" % e)
+            _land_tap_at = time.time()
             if uiwalk.tap(serial, x, y):
                 res.ui_taps += 1
                 tried[landing_mod.node_key(node)] = tried.get(
@@ -7522,7 +7862,10 @@ def _landing(res: ScanResult, cfg, live, deadline: float,
                 if _cst:
                     pending_consent = {"node": node, "form": form, "fp": fp,
                                        "label": (getattr(node, "text", "") or ""),
-                                       "strength": _cst}
+                                       "strength": _cst,
+                                       # 点击那一瞬（epoch 秒）：登记要晚一屏，
+                                       # 但分水岭必须落在真正点击的时刻上。
+                                       "at": _land_tap_at}
             else:
                 rec["result"] = "tap_failed"
         elif action == "swipe":
@@ -7617,6 +7960,14 @@ _PRE_EXPLORE_TAP_CAP = 90        # 单轮总点击数上限（防某页面无限
 # 2026-11-17 真机：前台判定失效时，探索在 MIUI 相册里连点了 5 次
 # （含「新建相册」）—— 这不是"没测到"，这是在别人的应用里动手。
 _PRE_EXPLORE_ESCAPE_CAP = 4
+# 1 档在动任何东西之前先静置多久。
+# 依据（2026-11-18 真机，同一批 APK 的 1 档 / 2 档 / 4 档对照）：
+#   · 驿站助手 4 档：第 23.0 秒读 Android ID；2 档：第 24.0 秒（同意在 50.6s）
+#   · 贝利自动点击器 4 档：第 48.2 秒读
+# 45 秒够前者、不够后者，取 50。这段是"什么都不做地守着"，
+# 而 App 在这个窗口里做的事，恰恰就是 1 档要的全部证据。
+_SETTLE_FIRST_SECONDS = 50
+
 # 探索期间"重新拉起应用"的次数上限：每次重启都会重放首启流程，网络请求
 # 跟着重复计数（真机上把它写成了"外发 43 次"），而换来的常常还是同一屏。
 _PRE_EXPLORE_RESPAWN_CAP = 3
@@ -7719,6 +8070,214 @@ def _pre_may_tap(label: str) -> bool:
     return True
 
 
+def _pre_consent_settle(res: ScanResult, serial: str, deadline: float,
+                        log: Callable[[str], None], *, poll: float = 5.0,
+                        quiet: float = 0.0,
+                        on_stage: Optional[Callable[[str, int], None]] = None,
+                        get_script: Optional[Callable[[], Any]] = None,
+                        rehook: Optional[Callable[[], bool]] = None
+                        ) -> Dict[str, Any]:
+    """1 档：政策处理完之后，在未同意状态下**静置**到首启窗口结束。
+
+    ★ 为什么必须留这一段（2026-11-18，同一批 App 的 1 档 / 4 档对照）：
+      1 档原本是"取到政策正文就收工"。驿站助手开局按链接 2 秒就拿到 15378 字，
+      随即转入未同意探索，第一下点了「不同意并退出」—— App 直接退回桌面，
+      整轮 P1 只有 40.6 秒。而同一个 App 的 4 档在同一个弹窗上停了 50 秒，
+      第 **23.0 秒**就读了 Android ID（`Settings.Secure.getStringForUser`）。
+      贝利自动点击器同理：4 档第 **48.2 秒**读，1 档 45 秒窗口刚关上。
+      两轮的差别不在 hook（都是 76 / 75 个，`dev_android_id` 都在），
+      也不在判定（4 档归"同意前"是对的），只在"弹窗上待了多久"。
+
+      所以这一段不能省：它不点任何东西，只按秒守着，本身就是最干净的
+      同意前观测 —— 而 SDK 读设备标识基本都在冷启动后 20~50 秒之间由
+      异步线程发起，早一秒收工就一条都看不到。
+
+    界面**自己**变了（开屏广告结束、弹窗自行消失、App 自己跳主界面）才补一张图；
+    我们不动手，所以这些界面都是 App 的自主行为，取证意义反而更高。
+    """
+    t0 = time.time()
+    out: Dict[str, Any] = {"seconds": 0.0, "screens": 0, "changes": [],
+                           "why": "", "left_app": "", "perm_dialogs": 0}
+    # ★ 采集通道健康检查（每 ~12 秒一次）。主遍历循环本来就有这道检查，
+    #   但 1 档的静置/探索走的是另一条路，此前完全没有 —— 脚本若在静置期间
+    #   失效，App 照常在前台、界面照常可读，报告却只能写"未观测到收集行为"，
+    #   而真实情况是"那段时间根本没在采"。这正是"跑了十几个 App 一个实锤都
+    #   没有"最可能的成因之一，必须能区分开。
+    health: Dict[str, Any] = {"checks": 0, "fail": 0, "rehooks": 0,
+                              "last_error": ""}
+    _last_ck = 0.0
+    package = getattr(res, "package", "") or ""
+    last_sig = ""
+    body_tapped = False
+    _perm_seen: set = set()   # 已取过证的权限弹窗：静置期间同一个不重复记录
+    span = max(1.0, deadline - t0)
+    # ★ 前 `quiet` 秒**完全不碰设备**：不 dump、不截图、不查前台、不做健康检查。
+    #
+    #   为什么（2026-11-18，同一台机、同一个 APK 的四轮对照）：
+    #     · 2 档：0~24 秒 App 自己读出 Android ID（elapsed=23946ms），
+    #       而它同一时间只 dump 了寥寥几次（每轮都要等视觉模型回话）；
+    #     · 1 档：每 5 秒 dump 一次，51~65 秒里一条事件都没有，健康检查 4/4 通过。
+    #   `uiautomator dump` 会让 App 主线程去响应 AccessibilityNodeInfo 请求，
+    #   而大量 App 的首启初始化挂在 `IdleHandler` / `postDelayed` 上 —— 消息队列
+    #   一直不空闲，那些初始化就永远排不到，看起来就像"App 什么都没做"。
+    #   这不是 App 干净，是我们在跟它抢主线程。
+    _quiet_until = t0 + max(0.0, quiet)
+    while time.time() < deadline:
+        if time.time() < _quiet_until:
+            # 静默段：一个 adb 命令都不发，让 App 的消息队列真正空闲下来。
+            time.sleep(min(2.0, max(0.05, _quiet_until - time.time())))
+            continue
+        try:
+            pkg_now = _fg_pkg(uiwalk.foreground(serial))
+        except Exception:
+            pkg_now = ""
+        # ★ 系统权限弹窗**不算**"应用离开前台"：它是 App 在未同意状态下自己
+        #   弹出来的，本身就是"提前索权"的直接证据（Q002 的一大类）。这里只
+        #   记一笔、整屏不动 —— 点「允许」等于替用户授权，点「拒绝」等于替
+        #   用户拒绝，两种都会改写被测状态，之后测到的就不是 App 原本的行为了。
+        if pkg_now and any(pkg_now == _p or pkg_now.startswith(_p + ".")
+                           for _p in uiwalk.PERM_PACKAGES):
+            out["perm_dialogs"] = int(out["perm_dialogs"]) + 1
+            # ★ 只计数不取证，等于"看见了却什么也没留下"（2026-11-18）：
+            #   判定层要判「同意前索权」，必须有 perm_scenes 里 phase=P1 的记录。
+            #   静置段本来就整屏不动，取证只多一次 dump，不改变被测状态。
+            _pxml = uiwalk.dump_retry(serial, tries=1, wait=0.4)
+            if _pxml:
+                _capture_perm_dialog(
+                    res, _pxml, serial, log, phase="P1",
+                    pre_text=last_sig, seen=_perm_seen, tap_allow=False,
+                    app_before=True)   # 静置段走到这里，此前一直在被测应用上
+            log("[*] 1 档静置：出现系统权限弹窗（%s），不代为作答、继续静置" % pkg_now)
+            time.sleep(min(poll, max(0.0, deadline - time.time())))
+            continue
+        # 前台跑掉了就不再等：App 自己退出/崩溃时，静置只是空烧预算。
+        if pkg_now and package and not _pkg_is_app(pkg_now, package):
+            out["left_app"] = pkg_now
+            out["why"] = "应用自行离开前台（%s）" % pkg_now
+            log("[*] 1 档静置：应用自行离开前台（%s），提前结束静置" % pkg_now)
+            break
+        xml = uiwalk.dump_retry(serial, tries=1, wait=0.3)
+        if xml:
+            texts = uiwalk.screen_texts(xml)
+            sig = "|".join(texts)[:400]
+            if sig and sig != last_sig:
+                if last_sig:
+                    # 不是我们点出来的，是 App 自己变的 —— 单独留一张。
+                    out["screens"] += 1
+                    out["changes"].append(sig[:80])
+                    observe_screen(res, "未同意静置：界面自行变化 %d" % out["screens"],
+                                   serial, xml=xml)
+                    log("[*] 1 档静置：界面自行变化（第 %d 次）" % out["screens"])
+                last_sig = sig
+            # ★ 静置进行到 35% 时，点一下政策正文（只一次，且绝不点按钮）。
+            #   纯等是等不出来的：App 的初始化链由"用户读了政策"这件事带起来，
+            #   真机 logcat 里那一下 PerformClick 之后紧接着就是 Android ID 读取。
+            if (not body_tapped
+                    and (time.time() - t0) >= max(span * 0.35, quiet + 1.0)):
+                _bn = _pre_body_node(xml)
+                if _bn is not None:
+                    try:
+                        uiwalk.tap(serial, *_bn.center)
+                        body_tapped = True
+                        out["body_tap"] = {
+                            "label": (getattr(_bn, "text", "") or "")[:40],
+                            "at": round(time.time() - t0, 1),
+                        }
+                        log("[*] 1 档静置：点了一次政策正文（模拟阅读，不碰任何按钮）")
+                        last_sig = ""      # 允许下一轮把"正文点开后"的界面记下来
+                        time.sleep(max(1.0, poll * 0.4))
+                        continue
+                    except Exception as _e:
+                        body_tapped = True
+                        log("[!] 1 档静置：点正文失败（%s）" % str(_e)[:60])
+        # ---- 采集通道健康检查 ----
+        if get_script is not None and time.time() - _last_ck >= 12:
+            _last_ck = time.time()
+            health["checks"] += 1
+            _ok = True
+            try:
+                get_script().exports_sync.summary()
+            except Exception as _e:
+                _ok = False
+                health["fail"] += 1
+                health["last_error"] = str(_e)[:120]
+                log("[!] 1 档静置：采集脚本健康检查失败（第 %d 次，%s）"
+                    % (health["checks"], health["last_error"][:80]))
+            if not _ok and rehook is not None:
+                try:
+                    if rehook():
+                        health["rehooks"] += 1
+                        log("[*] 1 档静置：已重新注入 hook，继续静置")
+                except Exception as _e2:
+                    log("[!] 1 档静置：重新注入失败（%s）" % str(_e2)[:80])
+        if on_stage is not None:
+            try:
+                on_stage("未同意静置观测",
+                         min(90, 78 + int(10 * min(1.0, (time.time() - t0) / span))))
+            except Exception:
+                pass
+        _left = deadline - time.time()
+        if _left <= 0:
+            break
+        time.sleep(min(poll, _left))
+    out["seconds"] = round(time.time() - t0, 1)
+    if not out["why"]:
+        out["why"] = "静置到首启观测窗口结束"
+    out["hook"] = health
+    log("[*] 1 档静置：%.0fs，界面自行变化 %d 次，采集通道检查 %d 次/失败 %d 次，"
+        "点正文 %s（%s）"
+        % (out["seconds"], out["screens"], health["checks"], health["fail"],
+           "一次" if body_tapped else "未点到", out["why"]))
+    return out
+
+
+def _pre_body_node(xml: str) -> Optional[Any]:
+    """从当前屏里挑一个"政策正文"节点，用来点一下、模拟用户阅读。
+
+    ★ 为什么非要点这一下（2026-11-18，真机 logcat 定论）：
+      驿站助手在"未同意"弹窗上，**纯等**是等不出来的 —— 手动启动 + 滑动，
+      App 进程 74 秒内一行业务日志都没有；1 档在同样的 51.8 秒里，
+      健康检查 4/4 通过却只采到 2 条时区读取。
+      而同一台机、同一个 APK 的 2 档能采到：logcat 里在**启动后 24.6 秒**
+      出现一次 `android.view.View$PerformClick`，Android ID 的读取
+      （elapsed=23946ms）就发生在这一下之后 —— 也就是说，App 的初始化链
+      是被"用户点了正文"这件事带起来的，不是被时间带起来的。
+      4 档的 ui_steps 也印证：「同意前补做政策访问：点击「请你务必审慎阅读、
+      充分理解"隐私政策"和"服务协」(296,573)」—— 点的正是正文。
+
+    这里刻意**不用** `_pre_may_tap` 做闸门：政策正文里必然出现"同意"二字
+    （"您同意本政策…"），拿按钮口径去判长文本，正文章节会被整段拒掉。
+    改按形态判：够长（≥40 字）、高度不覆盖大半屏（否则它的中心可能正好压在
+    按钮上）。按钮永远不会有 40 个字，这条判据比关键词可靠。
+    """
+    try:
+        nodes = uiwalk.parse_all(xml)
+    except Exception:
+        return None
+    if not nodes:
+        return None
+    screen_bottom = 0
+    for n in nodes:
+        b = getattr(n, "bounds", None) or (0, 0, 0, 0)
+        if b[3] > screen_bottom:
+            screen_bottom = b[3]
+    best = None
+    for n in nodes:
+        t = (getattr(n, "text", "") or "").strip()
+        if len(t) < 40:
+            continue
+        b = getattr(n, "bounds", None) or (0, 0, 0, 0)
+        h = b[3] - b[1]
+        # 覆盖大半屏的容器节点不能点：它的中心可能正好落在「同意」上。
+        if screen_bottom and h > screen_bottom * 0.5:
+            continue
+        # 正文里出现"注销/支付"这类词是正常的（政策会写这些条款），
+        # 但**标签本身是按钮**的情况必须排掉：靠"短"已经排掉了。
+        if best is None or len(t) > len((getattr(best, "text", "") or "")):
+            best = n
+    return best
+
+
 def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
                          log: Callable[[str], None], *, respawn=None,
                          should_stop: Optional[Callable[[], bool]] = None,
@@ -7737,6 +8296,7 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
     out: Dict[str, Any] = {
         "taps": 0, "screens": 0, "visited": [], "refused_exit": [],
         "skipped_consent": 0, "perm_dialogs": 0, "escapes": 0, "respawns": 0,
+        "skipped_exit": 0,
         "budget": round(span, 1), "why": "",
     }
     # 先落盘再干活：中途异常中断时，报告仍能看到"点过几屏"，
@@ -7751,7 +8311,13 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
     respawns = 0
     last_label = ""
     last_was_exit = False
+    _exit_labs: set = set()      # 已经点过、之后不再重复点的退出类标签
+    _perm_seen: set = set()  # 已经取过证的权限弹窗（同一弹窗不重复记）
     _cached_xml = None       # 点击后抓到的结构树，界面没再变就下一轮直接复用
+    # 停在被测应用上时读到的最后一屏文字：权限弹窗的「用途说明」通常写在
+    # 弹窗**之前**那一屏，弹窗自己盖住它之后就读不到了。
+    _last_app_text = ""
+    _app_seen_alive = False  # 是否已经亲眼确认过被测应用在前台（权限弹窗取证要用）
     log("[*] 1 档探索：在未同意状态下点击界面（上限 %ds / %d 次，绝不点同意）…"
         % (int(span), _PRE_EXPLORE_TAP_CAP))
 
@@ -7786,6 +8352,20 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
             if any(pkg_now == p or pkg_now.startswith(p + ".")
                    for p in uiwalk.PERM_PACKAGES):
                 out["perm_dialogs"] = int(out.get("perm_dialogs") or 0) + 1
+                # ★ 看见了就必须记下来（2026-11-18，用户第 1/3 条口径）：
+                #   这里原先只计数、只按 BACK，于是"同意前索要了哪个权限"在
+                #   采集侧就丢了 —— 判定层一条 perm_scenes(P1) 都拿不到，
+                #   只能写"未观测到"。而权限申请恰恰是用户明确要求的核心行为。
+                #   1 档不点弹窗（红线），所以只取证、不代为作答，取完再 BACK。
+                _pxml = uiwalk.dump_retry(serial, tries=1, wait=0.4)
+                if _pxml:
+                    _capture_perm_dialog(
+                        res, _pxml, serial, log, phase="P1",
+                        pre_text=_last_app_text, seen=_perm_seen,
+                        tap_allow=False,
+                        app_before=(True if _app_seen_alive else None))
+                else:
+                    log("[!] 1 档探索：权限弹窗结构树取不到，本轮只记次数、不记内容")
                 log("[*] 1 档探索：出现系统权限弹窗（%s），按 BACK 关闭、不代为作答"
                     % pkg_now)
                 uiwalk.back(serial)
@@ -7874,6 +8454,14 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
             if any(xml_pkg == p or xml_pkg.startswith(p + ".")
                    for p in uiwalk.PERM_PACKAGES):
                 out["perm_dialogs"] = int(out.get("perm_dialogs") or 0) + 1
+                # 结构树已经在手，直接取证（不必再 dump 一次）：这条路径比
+                # "只读前台焦点"那条更准，很多 ROM 上焦点读不到但 XML 里
+                # 包名是清楚的，漏掉这里就会漏记整次索权。
+                _capture_perm_dialog(
+                    res, xml, serial, log, phase="P1",
+                    pre_text=_last_app_text, seen=_perm_seen,
+                    tap_allow=False,
+                    app_before=(True if _app_seen_alive else None))
                 log("[*] 1 档探索：界面属于系统权限弹窗（%s），按 BACK 关闭、不代为作答"
                     % xml_pkg)
             else:
@@ -7891,6 +8479,17 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
                 log("[!] 1 档探索：%s" % out["why"])
                 break
             continue
+
+        # 这一屏确实属于被测应用：记住"刚才它在前台"（后面权限弹窗取证要用），
+        # 并把这一屏的文字留给下一次权限弹窗当「用途说明」的上下文 ——
+        # 弹窗会把这一屏盖住，事后再想读就没有了。
+        _app_seen_alive = True
+        try:
+            _lt = uiwalk.screen_texts(xml)
+            if _lt:
+                _last_app_text = " ".join(_lt)[:600]
+        except Exception:
+            pass
 
         # 换屏了才记一屏、才拍一张图（1 档总共 20 张配额）
         fkey = uiwalk.focus_key(act_now) if act_now else ""
@@ -7920,10 +8519,25 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
 
         nodes = [n for n in uiwalk.parse_all(xml)
                  if n.clickable and n.enabled and not uiwalk.is_no_use(n)]
+        # 退出类只点一次：把"拒绝后会发生什么"验证一遍就够了。再点只是让
+        # App 反复退出、反复重拉，首启流程跟着重放，网络请求重复计数
+        # （真机上曾把它写成"外发 43 次"）。
+        # ★ 这一段必须站到 `n.key in seen` **前面**：同一个「不同意」在重拉后的
+        #   新结构树里 key 往往一模一样，走 seen 就直接 continue 了，
+        #   `skipped_exit` 永远数不到，报告也就说不出"为什么只点了一次"。
+        _exit_done = bool(out.get("refused_exit"))
         cands = []
         for n in nodes:
             lab = (n.label or "").strip()
-            if not lab or n.key in seen:
+            if not lab:
+                continue
+            if _exit_done and _pre_exit_word(lab):
+                if lab not in _exit_labs:
+                    _exit_labs.add(lab)
+                    out["skipped_exit"] = int(out.get("skipped_exit") or 0) + 1
+                seen.add(n.key)
+                continue
+            if n.key in seen:
                 continue
             if not _pre_may_tap(lab):
                 # 同意类：记一笔就永久跳过，绝不因为"这一屏别的都点过了"再回来点它
@@ -7944,8 +8558,17 @@ def _explore_pre_consent(res: ScanResult, cfg, live, deadline: float,
             continue
         no_cand = 0
 
-        # 解锁类按钮优先：模态弹窗上点背景元素全是空转
-        cands.sort(key=lambda n: (0 if _pre_exit_word(n.label) else 1,
+        # ★ 退出类按钮（不同意 / 拒绝 / 跳过）**排到最后**，不再优先点。
+        #
+        #   原来的顺序是"退出类优先"，理由是"模态弹窗上点背景元素全是空转"。
+        #   这个理由在"点了不同意还能进主界面"的 App 上成立，但在真机上更像
+        #   反例：驿站助手点「不同意并退出」、贝利自动点击器点「不同意」，
+        #   两个都**直接退回桌面**——探索在第一下就自杀，后面的 respawn 又
+        #   重复同一条路（2026-11-18 实测）。
+        #
+        #   而"拒绝路径"这件事，一轮验证一次就够；把它排到最后，前面那些
+        #   无害入口（查看政策、关于、设置）才有机会先被点到。
+        cands.sort(key=lambda n: (1 if _pre_exit_word(n.label) else 0,
                                   len((n.label or "").strip())))
         node = cands[0]
         label = (node.label or "").strip()[:20]
@@ -12796,6 +13419,13 @@ def run_scan(cfg, log: Callable[[str], None] = print, *,
                 pass
         if res.summary.get("consentSource") and not res.consent_source:
             res.consent_source = res.summary["consentSource"]
+    # ★ 先按"点击那一刻"复核「同意前 / 同意后」，再做时刻自愈（2026-11-18）。
+    #   顺序不能反：自愈判的是"有没有晚于同意时刻的同意前事件"，
+    #   而这批误标的事件正是复核要清掉的对象；先自愈会被它们带偏。
+    try:
+        _reclassify_consent_boundary(res, log)
+    except Exception as _e:
+        log("[!] 同意分水岭复核异常（已采事件不受影响）：%s" % str(_e)[:120])
     # 同意时刻若与事件序列矛盾（存在晚于它的同意前事件），按事件序列重建
     try:
         from .flow import compare as _CMP
@@ -12808,7 +13438,9 @@ def run_scan(cfg, log: Callable[[str], None] = print, *,
         pass
     # 同意时刻是划分「同意前 / 同意后」的唯一边界，用脚本侧给的精确值
     if res.consent_given and res.consent_elapsed_ms is not None:
-        mark(res, "consent", int(res.consent_elapsed_ms))
+        # consent_elapsed_ms 与事件同基（进程启动为 0），marks 与时间轴是
+        # "采集开始为 0"，必须先换基再写，否则时间轴上同意会前移 20 秒。
+        mark(res, "consent", _scan_ms_from_event_ms(res, res.consent_elapsed_ms))
     # ★ 分水岭标记事件的时刻跟着最终值走。
     #   登记那一刻用的是本地时钟（相对采集开始），收尾可能被脚本侧更精确的
     #   「相对 App 进程启动」的值覆盖；两个时刻不统一的话，事件流里的标记
@@ -12817,8 +13449,7 @@ def run_scan(cfg, log: Callable[[str], None] = print, *,
         if getattr(_e, "signal", "") == "CONSENT":
             _e.elapsed_ms = int(res.consent_elapsed_ms or 0)
             if getattr(res, "started_at", 0):
-                _e.ts = int(float(res.started_at) * 1000) + int(
-                    res.consent_elapsed_ms or 0)
+                _e.ts = _event_ts_from_event_ms(res, res.consent_elapsed_ms)
     # 拿不到可靠耗时就留 None —— 报告会写"耗时未记录"。
     # 早先这里硬填 0，报告会显示"冷启动后 0.0 秒同意"，比不写更容易误导。
 

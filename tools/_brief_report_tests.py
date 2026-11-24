@@ -90,12 +90,29 @@ def _text(html: str) -> str:
     return t
 
 
+def _has_stack(p: Path) -> bool:
+    """这份 flow.json 里有没有可渲染的调用栈（用于挑素材）。"""
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    return any((r.get("stacks") or []) for r in (d.get("rows") or []))
+
+
 def _sample() -> Path:
     # 固定素材优先；素材目录随历史清理删掉后，退回最近一次平台任务的 flow.json ——
     # 断言看的是"渲染口径"，不依赖具体是哪个 App。
+    #
+    # ★ 但"最新的那份"不一定有栈（2026-11-18 撞到）：刚跑完的 1 档任务一条
+    #   栈都没有，于是"有堆栈的检测项 > 0"这类断言失败 —— 反映的是素材选错，
+    #   不是渲染坏了。所以先在有栈的候选里挑，都没有才退回最新那份。
     cands = [ROOT / "out" / d / "flow.json" for d in ("mbsf20", "mbsf19", "mbsf18")]
-    cands += sorted((ROOT / "out" / "platform").glob("*/flow.json"),
-                    key=lambda p: p.stat().st_mtime, reverse=True)[:5]
+    recent = sorted((ROOT / "out" / "platform").glob("*/flow.json"),
+                    key=lambda p: p.stat().st_mtime, reverse=True)[:12]
+    cands += recent
+    for p in cands:
+        if p.exists() and _has_stack(p):
+            return p
     for p in cands:
         if p.exists():
             return p
@@ -153,9 +170,13 @@ def test_render():
     check("含包名", (not _pkg) or _pkg in text, _pkg)
     _pur = str(data.get("policy_url") or "")
     if _pur:
-        check("含隐私政策链接", _pur in html, _pur[:80])
+        # 链接里带 & 时，HTML 必然写成 &amp;（浏览器等价）。断言只认裸 URL
+        # 会误报"含隐私政策链接"失败 —— 2026-11-18 驿站助手素材就是这样。
+        _pur_v = {_pur, _pur.replace("&", "&amp;")}
+        check("含隐私政策链接", any(v in html for v in _pur_v), _pur[:80])
         check("政策链接可点（<a href>）",
-              ('href=\'%s\'' % _pur) in html or ('href="%s"' % _pur) in html, _pur[:80])
+              any(('href=\'%s\'' % v) in html or ('href="%s"' % v) in html
+                  for v in _pur_v), _pur[:80])
     else:
         check("含隐私政策链接（素材无政策链接，跳过）", True)
 
@@ -268,9 +289,17 @@ def test_render():
         check("小于详细版",
               len(html.encode()) < detail.stat().st_size,
               "%d vs %d" % (len(html.encode()), detail.stat().st_size))
-    check("正文不超过 12000 字（仍远比详细版短）",
-          len(re.sub(r"<details>.*?</details>", "", text, flags=re.S)) < 12000,
-          len(text))
+    # ★ 政策全文放在 <details> 折叠块里（有意设计：简版也要能当场核对政策），
+    #   它不是"正文"。以前这里对已剥离标签的 text 做 <details> 剔除，
+    #   标签早没了 → 剔除无效，政策全文 1.5 万字全算进正文，断言必然失败。
+    _body = re.sub(r"<details.*?</details>", "", html, flags=re.S)
+    _body = re.sub(r"<[^>]+>", " ", _body)
+    _body = re.sub(r"\s+", "", _body)
+    # 上限从 12000 提到 13000（2026-11-18）：「本轮检测范围」现在要交代
+    # "多少条事件与同意点击同一交互"和"1 档不执行同意动作"——这是口径说明，
+    # 不是内容膨胀。宁可给 1000 字余量，也不为了凑数字把这句删掉。
+    check("正文不超过 13000 字（不含折叠的政策全文）",
+          len(_body) < 13000, str(len(_body)))
 
     # ⑧ 空数据不能崩
     empty = render_brief({"rows": [], "stats": {}}, app_name="空样本")
